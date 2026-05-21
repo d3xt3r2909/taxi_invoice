@@ -48,17 +48,20 @@ final class AppAuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> signIn({required String email, required String password}) async {
+  Future<void> signIn({
+    required String email,
+    required String password,
+    bool rememberMe = true,
+  }) async {
     if (!_isConfigured) {
-      _errorMessage = 'Firebase nije podešen.';
-      _status = AppAuthStatus.setupRequired;
-      notifyListeners();
+      _setSetupRequired();
       return;
     }
     _status = AppAuthStatus.signingIn;
     _errorMessage = null;
     notifyListeners();
     try {
+      await _applyPersistence(rememberMe: rememberMe);
       await _firebaseAuth!.signInWithEmailAndPassword(
         email: email.trim(),
         password: password,
@@ -74,6 +77,34 @@ final class AppAuthController extends ChangeNotifier {
     }
   }
 
+  Future<void> signInWithGoogle({bool rememberMe = true}) async {
+    if (!_isConfigured) {
+      _setSetupRequired();
+      return;
+    }
+    _status = AppAuthStatus.signingIn;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await _applyPersistence(rememberMe: rememberMe);
+      final provider = GoogleAuthProvider()
+        ..setCustomParameters({'prompt': 'select_account'});
+      if (kIsWeb) {
+        await _firebaseAuth!.signInWithPopup(provider);
+      } else {
+        await _firebaseAuth!.signInWithProvider(provider);
+      }
+    } on FirebaseAuthException catch (e) {
+      _status = AppAuthStatus.signedOut;
+      _errorMessage = _authMessage(e);
+      notifyListeners();
+    } catch (_) {
+      _status = AppAuthStatus.signedOut;
+      _errorMessage = 'Google prijava nije uspjela. Pokušajte ponovo.';
+      notifyListeners();
+    }
+  }
+
   Future<void> signOut() async {
     await _firebaseAuth?.signOut();
   }
@@ -84,9 +115,31 @@ final class AppAuthController extends ChangeNotifier {
     super.dispose();
   }
 
+  void _setSetupRequired() {
+    _errorMessage = 'Firebase nije podešen.';
+    _status = AppAuthStatus.setupRequired;
+    notifyListeners();
+  }
+
+  Future<void> _applyPersistence({required bool rememberMe}) async {
+    if (!kIsWeb) {
+      return;
+    }
+    await _firebaseAuth!.setPersistence(
+      rememberMe ? Persistence.LOCAL : Persistence.SESSION,
+    );
+  }
+
   static String _authMessage(FirebaseAuthException e) {
     return switch (e.code) {
+      'account-exists-with-different-credential' =>
+        'Račun već postoji s drugim načinom prijave.',
       'invalid-email' => 'Email adresa nije ispravna.',
+      'operation-not-allowed' =>
+        'Ovaj način prijave nije omogućen u Firebase konzoli.',
+      'popup-closed-by-user' => 'Google prijava je otkazana.',
+      'unauthorized-domain' =>
+        'Domena nije odobrena za Google prijavu u Firebase konzoli.',
       'user-disabled' => 'Korisnik je onemogućen.',
       'user-not-found' ||
       'wrong-password' ||

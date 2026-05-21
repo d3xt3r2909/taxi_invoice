@@ -21,4 +21,32 @@ void main() {
 
     expect(find.text('Firebase nije podešen'), findsOneWidget);
   });
+
+  testWidgets('shows Google sign-in on login screen', (tester) async {
+    await tester.pumpLoginScreen();
+
+    expect(find.text('Prijava Google računom'), findsOneWidget);
+  });
+
+  testWidgets('keeps email sign-in on login screen', (tester) async {
+    await tester.pumpLoginScreen();
+
+    expect(find.text('Prijava emailom'), findsOneWidget);
+  });
+
+  testWidgets('shows remember sign-in checkbox on login screen', (
+    tester,
+  ) async {
+    await tester.pumpLoginScreen();
+
+    expect(find.text('Zapamti prijavu'), findsOneWidget);
+  });
+}
+
+extension on WidgetTester {
+  Future<void> pumpLoginScreen() {
+    return pumpWidget(
+      MaterialApp(home: LoginScreen(auth: AppAuthController.notConfigured())),
+    );
+  }
 }

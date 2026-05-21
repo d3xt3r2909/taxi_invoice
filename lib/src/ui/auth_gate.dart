@@ -178,6 +178,8 @@ final class LoginScreen extends StatefulWidget {
 final class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  bool _rememberMe = true;
+  _LoginMethod? _activeMethod;
 
   @override
   void dispose() {
@@ -195,7 +197,23 @@ final class _LoginScreenState extends State<LoginScreen> {
       ).showSnackBar(const SnackBar(content: Text('Unesite email i lozinku.')));
       return;
     }
-    await widget.auth.signIn(email: email, password: password);
+    setState(() => _activeMethod = _LoginMethod.email);
+    await widget.auth.signIn(
+      email: email,
+      password: password,
+      rememberMe: _rememberMe,
+    );
+    if (mounted) {
+      setState(() => _activeMethod = null);
+    }
+  }
+
+  Future<void> _submitGoogle() async {
+    setState(() => _activeMethod = _LoginMethod.google);
+    await widget.auth.signInWithGoogle(rememberMe: _rememberMe);
+    if (mounted) {
+      setState(() => _activeMethod = null);
+    }
   }
 
   @override
@@ -212,32 +230,77 @@ final class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(24),
             children: [
               Text(
-                'Prijavite se email adresom koja je odobrena za aplikaciju.',
+                'Prijavite se Google računom ili email adresom koja je odobrena za aplikaciju.',
                 style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
               ),
               const SizedBox(height: 18),
-              TextField(
-                controller: _email,
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const [AutofillHints.email],
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
+              OutlinedButton.icon(
+                onPressed: signingIn ? null : _submitGoogle,
+                icon: _activeMethod == _LoginMethod.google
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const _GoogleMark(),
+                label: const Text('Prijava Google računom'),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _password,
-                obscureText: true,
-                autofillHints: const [AutofillHints.password],
-                onSubmitted: (_) {
-                  if (!signingIn) {
-                    _submit();
-                  }
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Lozinka',
-                  border: OutlineInputBorder(),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: _rememberMe,
+                onChanged: signingIn
+                    ? null
+                    : (value) {
+                        setState(() => _rememberMe = value ?? true);
+                      },
+                title: const Text('Zapamti prijavu'),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  const Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      'ili',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 18),
+              AutofillGroup(
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _email,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.email],
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _password,
+                      obscureText: true,
+                      autofillHints: const [AutofillHints.password],
+                      onSubmitted: (_) {
+                        if (!signingIn) {
+                          _submit();
+                        }
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Lozinka',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (widget.auth.errorMessage != null) ...[
@@ -253,14 +316,37 @@ final class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 18),
               FilledButton(
                 onPressed: signingIn ? null : _submit,
-                child: signingIn
+                child: _activeMethod == _LoginMethod.email
                     ? const SizedBox.square(
                         dimension: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Prijava'),
+                    : const Text('Prijava emailom'),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _LoginMethod { email, google }
+
+final class _GoogleMark extends StatelessWidget {
+  const _GoogleMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox.square(
+      dimension: 18,
+      child: Center(
+        child: Text(
+          'G',
+          style: TextStyle(
+            color: Color(0xFF4285F4),
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),

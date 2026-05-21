@@ -1,8 +1,13 @@
 # Firebase Setup
 
 Use a dedicated Firebase project on the Spark plan. Enable Authentication with
-the Email/Password provider, then create the three app users in Firebase
-Authentication.
+the Email/Password and Google providers, then create or approve the three app
+users in Firebase Authentication.
+
+For Google sign-in on GitHub Pages, open Authentication > Settings >
+Authorized domains and add the GitHub Pages host, for example
+`d3xt3r2909.github.io`. For local Chrome runs, add `localhost` if it is not
+already listed.
 
 Use Realtime Database, not Cloud Storage. Create the database in locked mode.
 After creating the users, copy each Firebase Auth UID and add this data in
