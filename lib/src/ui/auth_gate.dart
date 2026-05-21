@@ -150,8 +150,7 @@ final class _AuthGateState extends State<AuthGate> {
   Widget _signedInContent(BuildContext context) {
     final encryption = widget.encryption;
     if (encryption != null && !encryption.isUnlocked) {
-      if (_checkingEncryption ||
-          encryption.status == InvoiceStoreEncryptionStatus.checking) {
+      if (_checkingEncryption) {
         return const Scaffold(body: Center(child: CircularProgressIndicator()));
       }
       return DatabasePasswordScreen(
@@ -293,6 +292,7 @@ final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
               const SizedBox(height: 18),
               TextField(
                 controller: _password,
+                enabled: !checking,
                 obscureText: true,
                 autofillHints: const [AutofillHints.password],
                 onSubmitted: (_) {
@@ -309,6 +309,7 @@ final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _repeatPassword,
+                  enabled: !checking,
                   obscureText: true,
                   autofillHints: const [AutofillHints.password],
                   onSubmitted: (_) {
@@ -344,13 +345,33 @@ final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
                   ),
                 ),
               ],
+              if (checking) ...[
+                const SizedBox(height: 12),
+                Text(
+                  setup
+                      ? 'Šifru spremamo i šifrujemo bazu. Sačekajte nekoliko sekundi.'
+                      : 'Otključavam bazu. Sačekajte nekoliko sekundi.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               FilledButton(
                 onPressed: checking ? null : _submit,
                 child: checking
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(setup ? 'Šifrujem...' : 'Otključavam...'),
+                        ],
                       )
                     : Text(setup ? 'Postavi šifru' : 'Otključaj'),
               ),

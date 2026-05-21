@@ -72,30 +72,6 @@ final class HomeScreen extends StatelessWidget {
       body: Column(
         children: [
           if (store.isReadOnly) _StoreReadOnlyBanner(store: store),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  if (!store.canWrite) {
-                    showInvoiceStoreReadOnlyMessage(context, store);
-                    return;
-                  }
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => InvoiceChatWizardScreen(
-                        store: store,
-                        settings: settings,
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.chat_bubble_outline_rounded),
-                label: const Text('Pomoćnik za račun'),
-              ),
-            ),
-          ),
           Expanded(
             child: list.isEmpty
                 ? Center(
@@ -103,7 +79,7 @@ final class HomeScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(24),
                       child: Text(
                         'Nema sačuvanih računa.\n\nDodajte prvi pritiskom na '
-                        'zeleno dugme „Novi račun” dolje.',
+                        'jedno od dugmadi dolje.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           fontSize: 18,
@@ -113,7 +89,7 @@ final class HomeScreen extends StatelessWidget {
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+                    padding: const EdgeInsets.all(16),
                     itemCount: list.length,
                     itemBuilder: (context, index) {
                       final inv = list[index];
@@ -177,21 +153,86 @@ final class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          if (!store.canWrite) {
-            showInvoiceStoreReadOnlyMessage(context, store);
-            return;
-          }
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) =>
-                  InvoiceEditorScreen(store: store, settings: settings),
+      bottomNavigationBar: _InvoiceCreateActions(
+        store: store,
+        settings: settings,
+      ),
+    );
+  }
+}
+
+final class _InvoiceCreateActions extends StatelessWidget {
+  const _InvoiceCreateActions({required this.store, required this.settings});
+
+  final InvoiceStoreController store;
+  final AppSettingsController settings;
+
+  void _openAssistant(BuildContext context) {
+    if (!store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, store);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            InvoiceChatWizardScreen(store: store, settings: settings),
+      ),
+    );
+  }
+
+  void _openEditor(BuildContext context) {
+    if (!store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, store);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => InvoiceEditorScreen(store: store, settings: settings),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final border = BorderSide(color: Theme.of(context).colorScheme.outline);
+    return Material(
+      color: Theme.of(context).colorScheme.surface,
+      child: SafeArea(
+        top: false,
+        child: DecoratedBox(
+          decoration: BoxDecoration(border: Border(top: border)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final assistant = OutlinedButton.icon(
+                  onPressed: () => _openAssistant(context),
+                  icon: const Icon(Icons.chat_bubble_outline_rounded),
+                  label: const Text('Pomoćnik za račun'),
+                );
+                final editor = FilledButton.icon(
+                  onPressed: () => _openEditor(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Novi račun'),
+                );
+                if (constraints.maxWidth < 420) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [assistant, const SizedBox(height: 10), editor],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: assistant),
+                    const SizedBox(width: 12),
+                    Expanded(child: editor),
+                  ],
+                );
+              },
             ),
-          );
-        },
-        icon: const Icon(Icons.add, size: 26),
-        label: const Text('Novi račun'),
+          ),
+        ),
       ),
     );
   }

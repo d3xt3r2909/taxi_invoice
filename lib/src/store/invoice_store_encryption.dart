@@ -112,6 +112,7 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     _requiresSetup = true;
     _setStatus(InvoiceStoreEncryptionStatus.checking);
     try {
+      await _letUiPaint();
       final normalized = _normalizePassphrase(passphrase);
       final raw = (await _storage.read()).text;
       if (raw != null && isEncryptedInvoiceStoreText(raw)) {
@@ -164,6 +165,7 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     final userId = _requireUserId();
     _setStatus(InvoiceStoreEncryptionStatus.checking);
     try {
+      await _letUiPaint();
       final normalized = _normalizePassphrase(passphrase);
       final raw = (await _storage.read()).text;
       if (raw == null || raw.trim().isEmpty) {
@@ -288,6 +290,10 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     _message = message;
     _status = InvoiceStoreEncryptionStatus.error;
     notifyListeners();
+  }
+
+  Future<void> _letUiPaint() async {
+    await Future<void>.delayed(const Duration(milliseconds: 80));
   }
 }
 
