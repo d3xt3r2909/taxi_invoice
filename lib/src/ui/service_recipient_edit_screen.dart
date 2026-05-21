@@ -88,19 +88,19 @@ final class _ServiceRecipientEditScreenState
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Obrisati naručioca?'),
-        content: const Text(
-          'Računi koji su već sačuvani zadržavaju podatke na PDF-u. Samo se '
-          'uklanja stavka iz liste za brži odabir pri novim računima.',
+        title: const Text('Obrisati naručioca iz liste?'),
+        content: Text(
+          '${ex.name} će nestati iz brzog odabira za nove račune.\n\n'
+          'Računi koji su već sačuvani ostaju isti i zadržavaju podatke na PDF-u.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Odustani'),
+            child: const Text('Zadrži u listi'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Obriši'),
+            child: const Text('Obriši iz liste'),
           ),
         ],
       ),

@@ -235,6 +235,7 @@ final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
   }
 
   Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
     final setup = widget.encryption.requiresSetup;
     final password = _password.text;
     if (setup && password.trim() != _repeatPassword.text.trim()) {
@@ -244,6 +245,10 @@ final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
       return;
     }
     if (setup) {
+      final confirmed = await _confirmDatabasePasswordSetup();
+      if (!mounted || !confirmed) {
+        return;
+      }
       await widget.encryption.setup(
         passphrase: password,
         rememberOnDevice: _remember,
@@ -256,11 +261,42 @@ final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
     }
   }
 
+  Future<bool> _confirmDatabasePasswordSetup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Potvrditi šifru baze?'),
+          content: const Text(
+            'Ova šifra zaključava zajedničku bazu računa.\n\n'
+            'Svi odobreni korisnici moraju znati istu šifru. Ako se šifra '
+            'zaboravi, podaci u bazi se ne mogu otvoriti.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Vrati se'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Postavi ovu šifru'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final encryption = widget.encryption;
     final setup = encryption.requiresSetup;
     final checking = encryption.status == InvoiceStoreEncryptionStatus.checking;
+    final progress = encryption.progress;
+    final progressPercent = progress == null
+        ? null
+        : (progress * 100).clamp(0, 100).round();
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
@@ -332,6 +368,9 @@ final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
                         setState(() => _remember = value ?? true);
                       },
                 title: const Text('Zapamti šifru na ovom uređaju'),
+                subtitle: const Text(
+                  'Sljedeće otvaranje baze biće brže na ovom telefonu ili računaru.',
+                ),
                 controlAffinity: ListTileControlAffinity.leading,
                 contentPadding: EdgeInsets.zero,
               ),
@@ -350,11 +389,24 @@ final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
                 Text(
                   setup
                       ? 'Šifru spremamo i šifrujemo bazu. Sačekajte nekoliko sekundi.'
-                      : 'Otključavam bazu. Sačekajte nekoliko sekundi.',
+                      : 'Otključavam bazu. Aplikacija ostaje dostupna dok provjera traje.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                LinearProgressIndicator(value: progress),
+                const SizedBox(height: 8),
+                Text(
+                  progressPercent == null
+                      ? 'Pripremam...'
+                      : '$progressPercent%',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],

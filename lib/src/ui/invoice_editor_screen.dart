@@ -1,16 +1,13 @@
-import 'package:app_taxi_invoice/src/pdf/invoice_pdf_builder.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
-import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_number.dart';
+import 'package:app_taxi_invoice/src/ui/invoice_save_preview_flow.dart';
 import 'package:app_taxi_invoice/src/ui/service_recipients_list_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_route_helpers.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
-import 'package:app_taxi_invoice/src/util/invoice_output_save.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
@@ -195,16 +192,6 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
       return;
     }
 
-    final canSaveDuplicate = await confirmDuplicateInvoiceNumberIfNeeded(
-      context: context,
-      store: widget.store,
-      invoiceNumber: no,
-      existingInvoiceId: widget.existing?.id,
-    );
-    if (!mounted || !canSaveDuplicate) {
-      return;
-    }
-
     final citiesToRemember = <String>[];
     final orderNamesToRemember = <String>[];
     for (final line in lines) {
@@ -228,82 +215,28 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
       savedPdfPath: widget.existing?.savedPdfPath,
     );
 
-    try {
-      await widget.store.upsertInvoiceWithSuggestions(
-        inv,
-        cities: citiesToRemember,
-        orderNames: orderNamesToRemember,
-      );
-    } catch (e) {
-      if (mounted) {
-        showInvoiceStoreMutationError(context, e);
-      }
-      return;
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    final bytes = await buildInvoicePdfBytes(inv);
-    if (!mounted) {
-      return;
-    }
-
-    var savedPath = inv.savedPdfPath;
-
-    if (!kIsWeb) {
-      final dir = widget.settings.pdfOutputDirectory;
-      if (dir == null || dir.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'U Postavkama odaberite folder u koji se snimaju PDF računi, '
-              'pa pokušajte ponovo.',
-            ),
-          ),
-        );
-        return;
-      }
-      final path = await saveInvoicePdfToOutputDirectory(
-        context: context,
-        directoryPath: dir,
-        bytes: bytes,
-        fileName: invoicePdfFileName(inv),
-      );
-      if (!mounted) {
-        return;
-      }
-      if (path == null) {
-        return;
-      }
-      savedPath = path;
-      try {
-        await widget.store.setInvoiceSavedPdfPath(inv.id, path);
-      } catch (e) {
-        if (mounted) {
-          showInvoiceStoreMutationError(context, e);
-        }
-      }
-    }
-
-    if (!mounted) {
-      return;
-    }
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PdfPreviewScreen(
-          invoice: inv,
-          pdfBytes: bytes,
-          initialSavedPdfPath: savedPath,
-        ),
-      ),
+    final action = await saveInvoiceAndOpenPdfPreview(
+      context: context,
+      invoice: inv,
+      store: widget.store,
+      settings: widget.settings,
+      citiesToRemember: citiesToRemember,
+      orderNamesToRemember: orderNamesToRemember,
     );
-    if (mounted) {
-      Navigator.of(context).pop();
-      if (widget.existing != null && context.mounted) {
-        Navigator.of(context).pop();
-      }
+    if (!mounted || action == null) {
+      return;
+    }
+    final navigator = Navigator.of(context);
+    navigator.popUntil((route) => route.isFirst);
+    if (action == InvoiceSavePostAction.newInvoice) {
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => InvoiceEditorScreen(
+            store: widget.store,
+            settings: widget.settings,
+          ),
+        ),
+      );
     }
   }
 

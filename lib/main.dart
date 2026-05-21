@@ -111,7 +111,7 @@ final class TaxiInvoiceApp extends StatelessWidget {
             }
             final mq = MediaQuery.of(context);
             final appFactor = AppSettingsController.textScaleFactorForStep(
-              settings.textScaleStep,
+              settings.effectiveTextScaleStep,
             );
             final systemFactor = mq.textScaler.scale(10) / 10.0;
             final combined = (systemFactor * appFactor).clamp(0.85, 2.6);

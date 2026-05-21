@@ -21,9 +21,11 @@ final class InvoiceStoreController extends ChangeNotifier {
 
   StoreSnapshot _snapshot = StoreSnapshot.empty();
   bool _loaded = false;
+  bool _saving = false;
 
   StoreSnapshot get snapshot => _snapshot;
   bool get isLoaded => _loaded;
+  bool get isSaving => _saving;
   InvoiceStoreSyncStatus get syncStatus => _repository.syncStatus;
   String? get syncMessage => _repository.syncMessage;
   bool get canWrite => _loaded && _repository.canWrite;
@@ -128,20 +130,22 @@ final class InvoiceStoreController extends ChangeNotifier {
     _ensureWritable();
     final previous = _snapshot;
     _snapshot = next;
+    _saving = true;
+    notifyListeners();
     try {
       await _persist();
     } on InvoiceStoreTextStorageException catch (e) {
       _snapshot = previous;
-      notifyListeners();
       throw InvoiceStoreMutationException(e.message);
     } catch (_) {
       _snapshot = previous;
-      notifyListeners();
       throw const InvoiceStoreMutationException(
         'Podaci nisu sačuvani. Pokušajte ponovo.',
       );
+    } finally {
+      _saving = false;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   Future<void> upsertInvoice(StoredInvoice invoice) async {

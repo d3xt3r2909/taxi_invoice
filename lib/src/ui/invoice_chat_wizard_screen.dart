@@ -46,6 +46,11 @@ final class _InvoiceChatWizardScreenState
   DateTime _currentLineDate = DateTime.now();
   final _lines = <InvoiceLine>[];
   bool _saving = false;
+  String? _recipientNameError;
+  String? _invoiceNumberError;
+  String? _routeError;
+  String? _orderNameError;
+  String? _amountError;
 
   @override
   void initState() {
@@ -88,6 +93,7 @@ final class _InvoiceChatWizardScreenState
     setState(() {
       _selectedRecipient = recipient;
       _manualRecipient = false;
+      _recipientNameError = null;
       _step = _ChatStep.invoiceNumber;
     });
   }
@@ -96,29 +102,42 @@ final class _InvoiceChatWizardScreenState
     setState(() {
       _selectedRecipient = null;
       _manualRecipient = true;
+      _recipientNameError = null;
     });
   }
 
   void _confirmManualRecipient() {
     if (_manualRecipientName.text.trim().isEmpty) {
-      _showMessage('Unesite naziv naručioca.');
+      setState(() {
+        _recipientNameError = 'Naziv naručioca je obavezan.';
+      });
       return;
     }
-    setState(() => _step = _ChatStep.invoiceNumber);
+    setState(() {
+      _recipientNameError = null;
+      _step = _ChatStep.invoiceNumber;
+    });
   }
 
   void _confirmInvoiceNumber() {
     final invoiceNumber = normalizeInvoiceNumberForSave(_invoiceNumber.text);
     _invoiceNumber.text = invoiceNumber;
     if (invoiceNumber.isEmpty) {
-      _showMessage('Unesite broj računa.');
+      setState(() {
+        _invoiceNumberError = 'Broj računa je obavezan.';
+      });
       return;
     }
     if (!isValidInvoiceNumberFormat(invoiceNumber)) {
-      _showMessage('Broj računa mora biti u formatu 05/26.');
+      setState(() {
+        _invoiceNumberError = 'Broj računa mora biti u formatu 05/26.';
+      });
       return;
     }
-    setState(() => _step = _ChatStep.issueDate);
+    setState(() {
+      _invoiceNumberError = null;
+      _step = _ChatStep.issueDate;
+    });
   }
 
   Future<void> _pickIssueDate(DateTime initialDate) async {
@@ -172,10 +191,13 @@ final class _InvoiceChatWizardScreenState
   void _setRoute(String route) {
     final trimmed = route.trim();
     if (parseInvoiceRoute(trimmed).length < 2) {
-      _showMessage('Relacija treba imati najmanje dva grada.');
+      setState(() {
+        _routeError = 'Relacija treba imati najmanje dva grada.';
+      });
       return;
     }
     setState(() {
+      _routeError = null;
       _route.text = trimmed;
       _step = _ChatStep.orderName;
     });
@@ -184,10 +206,13 @@ final class _InvoiceChatWizardScreenState
   void _setOrderName(String orderName) {
     final trimmed = orderName.trim();
     if (trimmed.isEmpty) {
-      _showMessage('Unesite broj narudžbe ili ime.');
+      setState(() {
+        _orderNameError = 'Broj narudžbe ili ime je obavezno.';
+      });
       return;
     }
     setState(() {
+      _orderNameError = null;
       _orderName.text = trimmed;
       _step = _ChatStep.amount;
     });
@@ -196,7 +221,9 @@ final class _InvoiceChatWizardScreenState
   void _setAmount(String value) {
     final parsed = double.tryParse(value.trim().replaceAll(',', '.'));
     if (parsed == null || parsed <= 0) {
-      _showMessage('Unesite ispravan iznos.');
+      setState(() {
+        _amountError = 'Unesite ispravan iznos u KM.';
+      });
       return;
     }
     final line = InvoiceLine(
@@ -206,6 +233,7 @@ final class _InvoiceChatWizardScreenState
       iznosKm: parsed,
     );
     setState(() {
+      _amountError = null;
       _amount.text = _formatAmount(parsed);
       _lines.add(line);
       _step = _ChatStep.moreLines;
@@ -218,6 +246,9 @@ final class _InvoiceChatWizardScreenState
       _route.clear();
       _orderName.clear();
       _amount.clear();
+      _routeError = null;
+      _orderNameError = null;
+      _amountError = null;
       _step = _ChatStep.lineDate;
     });
   }
@@ -238,11 +269,22 @@ final class _InvoiceChatWizardScreenState
     final invoiceNumber = normalizeInvoiceNumberForSave(_invoiceNumber.text);
     _invoiceNumber.text = invoiceNumber;
     if (_recipientName.isEmpty || invoiceNumber.isEmpty) {
-      _showMessage('Nedostaju osnovni podaci računa.');
+      setState(() {
+        if (_recipientName.isEmpty) {
+          _recipientNameError = 'Naziv naručioca je obavezan.';
+          _step = _ChatStep.recipient;
+        } else {
+          _invoiceNumberError = 'Broj računa je obavezan.';
+          _step = _ChatStep.invoiceNumber;
+        }
+      });
       return;
     }
     if (!isValidInvoiceNumberFormat(invoiceNumber)) {
-      _showMessage('Broj računa mora biti u formatu 05/26.');
+      setState(() {
+        _invoiceNumberError = 'Broj računa mora biti u formatu 05/26.';
+        _step = _ChatStep.invoiceNumber;
+      });
       return;
     }
     if (_lines.isEmpty) {
@@ -262,7 +304,7 @@ final class _InvoiceChatWizardScreenState
       recipientAddress: _recipientAddress,
       recipientJib: _recipientJib,
     );
-    final saved = await saveInvoiceAndOpenPdfPreview(
+    final action = await saveInvoiceAndOpenPdfPreview(
       context: context,
       invoice: invoice,
       store: widget.store,
@@ -277,9 +319,37 @@ final class _InvoiceChatWizardScreenState
       return;
     }
     setState(() => _saving = false);
-    if (saved && mounted) {
-      Navigator.of(context).pop();
+    if (action == InvoiceSavePostAction.backToList) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
     }
+    if (action == InvoiceSavePostAction.newInvoice) {
+      _resetForNextInvoice();
+    }
+  }
+
+  void _resetForNextInvoice() {
+    final now = DateTime.now();
+    setState(() {
+      _manualRecipientName.clear();
+      _manualRecipientAddress.clear();
+      _manualRecipientJib.clear();
+      _invoiceNumber.text = suggestInvoiceNumbers(now)[1];
+      _route.clear();
+      _orderName.clear();
+      _amount.clear();
+      _recipientNameError = null;
+      _invoiceNumberError = null;
+      _routeError = null;
+      _orderNameError = null;
+      _amountError = null;
+      _selectedRecipient = null;
+      _manualRecipient = false;
+      _issueDate = DateTime(now.year, now.month, now.day);
+      _currentLineDate = _issueDate;
+      _lines.clear();
+      _step = _ChatStep.recipient;
+    });
   }
 
   ServiceRecipient? _manualServiceRecipientToRemember() {
@@ -455,6 +525,7 @@ final class _InvoiceChatWizardScreenState
           _LargeTextField(
             controller: _manualRecipientName,
             label: 'Naziv naručioca',
+            errorText: _recipientNameError,
             textCapitalization: TextCapitalization.words,
           ),
           const SizedBox(height: 10),
@@ -511,6 +582,7 @@ final class _InvoiceChatWizardScreenState
           controller: _invoiceNumber,
           label: 'Broj računa',
           hint: 'npr. 05/26',
+          errorText: _invoiceNumberError,
           keyboardType: TextInputType.text,
           inputFormatters: const [InvoiceNumberInputFormatter()],
           textCapitalization: TextCapitalization.characters,
@@ -600,6 +672,7 @@ final class _InvoiceChatWizardScreenState
 
   Widget _routePanel(BuildContext context) {
     final suggestions = suggestRoutes(widget.store.snapshot);
+    final citySuggestions = widget.store.cities.take(16).toList();
     return _PanelColumn(
       children: [
         if (suggestions.isNotEmpty) ...[
@@ -622,10 +695,31 @@ final class _InvoiceChatWizardScreenState
           ),
           const SizedBox(height: 12),
         ],
+        if (citySuggestions.isNotEmpty) ...[
+          const _SuggestionLabel(
+            text: 'Gradovi',
+            icon: Icons.location_city_outlined,
+          ),
+          const SizedBox(height: 8),
+          _CitySuggestionChips(
+            cities: citySuggestions,
+            onSelected: (city) {
+              setState(() {
+                _route.text = appendCityToInvoiceRoute(_route.text, city);
+                _routeError = null;
+                _route.selection = TextSelection.collapsed(
+                  offset: _route.text.length,
+                );
+              });
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         _LargeTextField(
           controller: _route,
           label: 'Relacija',
-          hint: 'npr. Sarajevo - Mostar',
+          hint: 'npr. Sarajevo - Mostar, Sarajevo, Mostar; Tuzla / Zenica',
+          errorText: _routeError,
           textCapitalization: TextCapitalization.words,
         ),
         const SizedBox(height: 12),
@@ -661,6 +755,7 @@ final class _InvoiceChatWizardScreenState
         _LargeTextField(
           controller: _orderName,
           label: 'Broj narudžbe ili ime',
+          errorText: _orderNameError,
           textCapitalization: TextCapitalization.words,
         ),
         const SizedBox(height: 12),
@@ -702,6 +797,7 @@ final class _InvoiceChatWizardScreenState
         _LargeTextField(
           controller: _amount,
           label: 'Iznos (KM)',
+          errorText: _amountError,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           inputFormatters: [
             FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
@@ -753,60 +849,49 @@ final class _InvoiceChatWizardScreenState
     final total = _lines.fold<double>(0, (sum, line) => sum + line.iznosKm);
     return _PanelColumn(
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: 0.45,
-            ),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SummaryRow(label: 'Naručilac', value: _recipientName),
-                _SummaryRow(
-                  label: 'Broj računa',
-                  value: _invoiceNumber.text.trim(),
-                ),
-                _SummaryRow(
-                  label: 'Datum',
-                  value: formatInvoiceDateMedium(_issueDate),
-                ),
-                _SummaryRow(label: 'Stavki', value: '${_lines.length}'),
-                _SummaryRow(
-                  label: 'Ukupno',
-                  value: '${_formatAmount(total)} KM',
-                ),
-              ],
-            ),
+        Text(
+          'Provjerite prije čuvanja',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w900,
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _saving ? null : _goBack,
-                icon: const Icon(Icons.arrow_back_rounded),
-                label: const Text('Nazad'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _save,
-                icon: _saving
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('Sačuvaj PDF'),
-              ),
-            ),
-          ],
+        const SizedBox(height: 6),
+        Text(
+          'Ako nešto nije tačno, pritisnite Nazad i popravite taj podatak.',
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 14),
+        _FinalReviewCard(
+          recipientName: _recipientName,
+          invoiceNumber: _invoiceNumber.text.trim(),
+          issueDate: _issueDate,
+          lines: _lines,
+          totalLabel: '${_formatAmount(total)} KM',
+          amountFormatter: _formatAmount,
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: _saving ? null : _save,
+          icon: _saving
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.picture_as_pdf_outlined),
+          label: const Text('Sačuvaj PDF'),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _saving ? null : _goBack,
+          icon: const Icon(Icons.arrow_back_rounded),
+          label: const Text('Nazad'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(52),
+          ),
         ),
       ],
     );
@@ -916,11 +1001,39 @@ final class _ChoiceButton extends StatelessWidget {
   }
 }
 
+final class _CitySuggestionChips extends StatelessWidget {
+  const _CitySuggestionChips({required this.cities, required this.onSelected});
+
+  final List<String> cities;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: cities.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final city = cities[index];
+          return ActionChip(
+            visualDensity: VisualDensity.compact,
+            label: Text(city),
+            onPressed: () => onSelected(city),
+          );
+        },
+      ),
+    );
+  }
+}
+
 final class _LargeTextField extends StatelessWidget {
   const _LargeTextField({
     required this.controller,
     required this.label,
     this.hint,
+    this.errorText,
     this.minLines,
     this.maxLines = 1,
     this.keyboardType,
@@ -931,6 +1044,7 @@ final class _LargeTextField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final String? hint;
+  final String? errorText;
   final int? minLines;
   final int? maxLines;
   final TextInputType? keyboardType;
@@ -950,6 +1064,7 @@ final class _LargeTextField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        errorText: errorText,
         filled: true,
         fillColor: scheme.surface,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
@@ -1013,39 +1128,183 @@ final class _SuggestionLabel extends StatelessWidget {
   }
 }
 
-final class _SummaryRow extends StatelessWidget {
-  const _SummaryRow({required this.label, required this.value});
+final class _FinalReviewCard extends StatelessWidget {
+  const _FinalReviewCard({
+    required this.recipientName,
+    required this.invoiceNumber,
+    required this.issueDate,
+    required this.lines,
+    required this.totalLabel,
+    required this.amountFormatter,
+  });
 
+  final String recipientName;
+  final String invoiceNumber;
+  final DateTime issueDate;
+  final List<InvoiceLine> lines;
+  final String totalLabel;
+  final String Function(double amount) amountFormatter;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.46),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _ReviewRow(
+              icon: Icons.business_outlined,
+              label: 'Naručilac',
+              value: recipientName,
+            ),
+            _ReviewRow(
+              icon: Icons.receipt_long_outlined,
+              label: 'Broj računa',
+              value: invoiceNumber,
+            ),
+            _ReviewRow(
+              icon: Icons.calendar_month_outlined,
+              label: 'Datum računa',
+              value: formatInvoiceDateMedium(issueDate),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Stavke',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            for (var i = 0; i < lines.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              _ReviewLine(
+                index: i + 1,
+                line: lines[i],
+                amountLabel: '${amountFormatter(lines[i].iznosKm)} KM',
+              ),
+            ],
+            const Divider(height: 24),
+            _ReviewRow(
+              icon: Icons.payments_outlined,
+              label: 'Ukupno',
+              value: totalLabel,
+              strong: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+final class _ReviewRow extends StatelessWidget {
+  const _ReviewRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.strong = false,
+  });
+
+  final IconData icon;
   final String label;
   final String value;
+  final bool strong;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
+          Icon(icon, size: 22, color: theme.colorScheme.primary),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+final class _ReviewLine extends StatelessWidget {
+  const _ReviewLine({
+    required this.index,
+    required this.line,
+    required this.amountLabel,
+  });
+
+  final int index;
+  final InvoiceLine line;
+  final String amountLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.75),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Stavka $index',
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              line.putnaRelacija,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${formatInvoiceDateMedium(line.datumRacuna)} · '
+              '${line.brojNarudzbe} · $amountLabel',
+              style: theme.textTheme.bodyLarge?.copyWith(height: 1.35),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -75,7 +75,18 @@ final class SettingsScreen extends StatelessWidget {
                   }
                 },
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 18),
+              SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                value: settings.simpleMode,
+                onChanged: settings.setSimpleMode,
+                secondary: const Icon(Icons.touch_app_outlined),
+                title: const Text('Jednostavan prikaz'),
+                subtitle: const Text(
+                  'Veći osnovni tekst i glavni put preko pomoćnika za račun.',
+                ),
+              ),
+              const SizedBox(height: 22),
               Text(
                 'Veličina teksta u aplikaciji',
                 style: theme.textTheme.titleMedium?.copyWith(
@@ -191,7 +202,7 @@ final class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'Status: ${invoiceStoreSyncStatusLabel(store.syncStatus)}',
+                'Status: ${invoiceStoreSyncStatusLabel(store.syncStatus, isSaving: store.isSaving)}',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   height: 1.45,
                   fontWeight: FontWeight.w600,

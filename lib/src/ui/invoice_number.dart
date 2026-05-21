@@ -86,17 +86,18 @@ Future<bool> confirmDuplicateInvoiceNumberIfNeeded({
       return AlertDialog(
         title: const Text('Broj računa već postoji'),
         content: Text(
-          'Račun broj $invoiceNumber već postoji. Želite li ipak sačuvati '
-          'još jedan račun sa istim brojem?',
+          'Već postoji račun sa brojem $invoiceNumber.\n\n'
+          'Provjerite mjesec i godinu prije čuvanja. Dva računa sa istim '
+          'brojem mogu napraviti zabunu kasnije.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Odustani'),
+            child: const Text('Vrati se i provjeri'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Ipak sačuvaj'),
+            child: const Text('Sačuvaj isti broj'),
           ),
         ],
       );

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_repository.dart';
@@ -106,6 +108,25 @@ void main() {
 
     expect(controller.hasInvoiceNumber(' 1/26 '), isTrue);
   });
+
+  test('isSaving is true while a cloud save is in flight', () async {
+    final writeGate = Completer<void>();
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(StoreSnapshot.empty()),
+      writeGate: writeGate,
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+    );
+    await controller.load();
+
+    final save = controller.upsertInvoice(_invoice());
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.isSaving, isTrue);
+    writeGate.complete();
+    await save;
+  });
 }
 
 StoredInvoice _invoice({String? recipientId}) {
@@ -143,11 +164,13 @@ final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
     this.text, {
     this.syncStatus = InvoiceStoreSyncStatus.online,
     this.throwsOnWrite = false,
+    this.writeGate,
   });
 
   String? text;
   final InvoiceStoreSyncStatus syncStatus;
   final bool throwsOnWrite;
+  final Completer<void>? writeGate;
 
   @override
   Future<InvoiceStoreTextRead> read() async {
@@ -159,6 +182,7 @@ final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
     if (throwsOnWrite) {
       throw const InvoiceStoreTextStorageException('write failed');
     }
+    await writeGate?.future;
     this.text = text;
     return InvoiceStoreTextWrite(syncStatus: syncStatus);
   }

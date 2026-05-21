@@ -129,7 +129,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ),
         ),
         content: Text(
-          'Ovo se ne može poništiti. Račun će nestati sa liste.',
+          '${invoiceDocumentTitle(invoice)} će nestati sa liste računa.\n\n'
+          'PDF koji ste već preuzeli ili sačuvali na uređaju neće se obrisati. '
+          'Ovu radnju u aplikaciji ne možete poništiti.',
           style: theme.textTheme.bodyLarge,
         ),
         actions: [
@@ -139,7 +141,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Da, obriši'),
+            child: const Text('Trajno obriši'),
           ),
         ],
       ),

@@ -51,11 +51,13 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
   String? _userId;
   _UnlockedStoreKey? _key;
   bool _requiresSetup = false;
+  double? _progress;
 
   InvoiceStoreEncryptionStatus get status => _status;
   String? get message => _message;
   bool get isUnlocked => _status.isUnlocked && _key != null;
   bool get requiresSetup => _requiresSetup;
+  double? get progress => _progress;
 
   Future<void> inspectForUser(String userId) async {
     _userId = userId;
@@ -111,6 +113,7 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     final userId = _requireUserId();
     _requiresSetup = true;
     _setStatus(InvoiceStoreEncryptionStatus.checking);
+    _setProgress(0);
     try {
       await _letUiPaint();
       final normalized = _normalizePassphrase(passphrase);
@@ -123,12 +126,14 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
         return;
       }
       final salt = _cryptor.randomBytes(InvoiceStoreCryptor.saltLength);
-      final key = _cryptor.deriveKey(
+      final key = await _cryptor.deriveKeyAsync(
         passphrase: normalized,
         salt: salt,
         iterations: _cryptor.iterations,
         keyLength: InvoiceStoreCryptor.keyLength,
+        onProgress: _setProgress,
       );
+      _setProgress(0.98);
       final plaintext = raw == null || raw.trim().isEmpty
           ? storeSnapshotToJsonString(StoreSnapshot.empty())
           : raw;
@@ -164,6 +169,7 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
   }) async {
     final userId = _requireUserId();
     _setStatus(InvoiceStoreEncryptionStatus.checking);
+    _setProgress(0);
     try {
       await _letUiPaint();
       final normalized = _normalizePassphrase(passphrase);
@@ -180,12 +186,14 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
       }
       _requiresSetup = false;
       final envelope = EncryptedInvoiceStoreEnvelope.fromJsonString(raw);
-      final key = _cryptor.deriveKey(
+      final key = await _cryptor.deriveKeyAsync(
         passphrase: normalized,
         salt: envelope.salt,
         iterations: envelope.iterations,
         keyLength: envelope.keyLength,
+        onProgress: _setProgress,
       );
+      _setProgress(0.98);
       _cryptor.decrypt(envelope, key);
       _key = _UnlockedStoreKey(
         key: key,
@@ -217,6 +225,7 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     _key = null;
     _message = null;
     _requiresSetup = false;
+    _progress = null;
     _status = InvoiceStoreEncryptionStatus.unlockRequired;
     notifyListeners();
   }
@@ -283,12 +292,29 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     if (status != InvoiceStoreEncryptionStatus.error) {
       _message = null;
     }
+    if (status != InvoiceStoreEncryptionStatus.checking) {
+      _progress = null;
+    }
     notifyListeners();
   }
 
   void _setError(String message, Object cause) {
     _message = message;
     _status = InvoiceStoreEncryptionStatus.error;
+    _progress = null;
+    notifyListeners();
+  }
+
+  void _setProgress(double? progress) {
+    final next = progress?.clamp(0, 1).toDouble();
+    final currentPercent = _progress == null
+        ? null
+        : (_progress! * 100).floor();
+    final nextPercent = next == null ? null : (next * 100).floor();
+    if (currentPercent == nextPercent) {
+      return;
+    }
+    _progress = next;
     notifyListeners();
   }
 
@@ -350,6 +376,56 @@ final class InvoiceStoreCryptor {
     final derivator = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64))
       ..init(Pbkdf2Parameters(salt, iterations, keyLength));
     return derivator.process(Uint8List.fromList(utf8.encode(passphrase)));
+  }
+
+  Future<Uint8List> deriveKeyAsync({
+    required String passphrase,
+    required Uint8List salt,
+    required int iterations,
+    required int keyLength,
+    int yieldEveryIterations = 512,
+    void Function(double progress)? onProgress,
+  }) async {
+    final passphraseBytes = Uint8List.fromList(utf8.encode(passphrase));
+    final hmac = HMac(SHA256Digest(), 64)..init(KeyParameter(passphraseBytes));
+    final output = BytesBuilder(copy: false);
+    final blockCount = (keyLength + hmac.macSize - 1) ~/ hmac.macSize;
+
+    for (var blockIndex = 1; blockIndex <= blockCount; blockIndex++) {
+      final saltBlock = Uint8List(salt.length + 4)..setAll(0, salt);
+      saltBlock[salt.length] = (blockIndex >> 24) & 0xff;
+      saltBlock[salt.length + 1] = (blockIndex >> 16) & 0xff;
+      saltBlock[salt.length + 2] = (blockIndex >> 8) & 0xff;
+      saltBlock[salt.length + 3] = blockIndex & 0xff;
+
+      var u = _hmacSha256(hmac, saltBlock);
+      final t = Uint8List.fromList(u);
+      for (var i = 2; i <= iterations; i++) {
+        u = _hmacSha256(hmac, u);
+        for (var j = 0; j < t.length; j++) {
+          t[j] ^= u[j];
+        }
+        if (i % yieldEveryIterations == 0) {
+          onProgress?.call(
+            (((blockIndex - 1) * iterations) + i) / (blockCount * iterations),
+          );
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+      onProgress?.call(blockIndex / blockCount);
+      output.add(t);
+    }
+
+    return Uint8List.sublistView(output.toBytes(), 0, keyLength);
+  }
+
+  Uint8List _hmacSha256(HMac hmac, Uint8List input) {
+    final output = Uint8List(hmac.macSize);
+    hmac
+      ..reset()
+      ..update(input, 0, input.length)
+      ..doFinal(output, 0);
+    return output;
   }
 
   String encrypt({

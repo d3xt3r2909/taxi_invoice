@@ -61,6 +61,49 @@ void main() {
     expect(nextEncryption.status, InvoiceStoreEncryptionStatus.unlocked);
     expect((await nextEncryption.readDecrypted()).text, plainText);
   });
+
+  test('async key derivation matches synchronous PBKDF2 output', () async {
+    const cryptor = InvoiceStoreCryptor(iterations: 1000);
+    final salt = cryptor.randomBytes(InvoiceStoreCryptor.saltLength);
+
+    final asyncKey = await cryptor.deriveKeyAsync(
+      passphrase: passphrase,
+      salt: salt,
+      iterations: cryptor.iterations,
+      keyLength: InvoiceStoreCryptor.keyLength,
+      yieldEveryIterations: 64,
+    );
+
+    expect(
+      asyncKey,
+      cryptor.deriveKey(
+        passphrase: passphrase,
+        salt: salt,
+        iterations: cryptor.iterations,
+        keyLength: InvoiceStoreCryptor.keyLength,
+      ),
+    );
+  });
+
+  test('async key derivation reports progress to completion', () async {
+    const cryptor = InvoiceStoreCryptor(iterations: 128);
+    final salt = cryptor.randomBytes(InvoiceStoreCryptor.saltLength);
+    final progress = <double>[];
+
+    await cryptor.deriveKeyAsync(
+      passphrase: passphrase,
+      salt: salt,
+      iterations: cryptor.iterations,
+      keyLength: InvoiceStoreCryptor.keyLength,
+      yieldEveryIterations: 16,
+      onProgress: progress.add,
+    );
+
+    expect(
+      progress,
+      allOf(anyElement(allOf(greaterThan(0), lessThan(1))), contains(1)),
+    );
+  });
 }
 
 InvoiceStoreEncryptionController _encryption(_MemoryTextStorage storage) {

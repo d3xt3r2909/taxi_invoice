@@ -13,7 +13,7 @@ import 'package:app_taxi_invoice/src/ui/settings_screen.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:flutter/material.dart';
 
-final class HomeScreen extends StatelessWidget {
+final class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.store,
     required this.settings,
@@ -24,6 +24,13 @@ final class HomeScreen extends StatelessWidget {
   final InvoiceStoreController store;
   final AppSettingsController settings;
   final AppAuthController auth;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+final class _HomeScreenState extends State<HomeScreen> {
+  _InvoiceHomeFilter _filter = _InvoiceHomeFilter.all;
 
   Future<void> _previewPdf(BuildContext context, StoredInvoice invoice) async {
     final bytes = await buildInvoicePdfBytes(invoice);
@@ -43,11 +50,13 @@ final class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final store = widget.store;
     if (!store.isLoaded) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final list = store.invoicesSortedByIssueDate;
+    final allInvoices = store.invoicesSortedByIssueDate;
+    final list = _filterInvoices(allInvoices, _filter, DateTime.now());
 
     return Scaffold(
       appBar: AppBar(
@@ -76,9 +85,9 @@ final class HomeScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => SettingsScreen(
-                    settings: settings,
-                    store: store,
-                    auth: auth,
+                    settings: widget.settings,
+                    store: widget.store,
+                    auth: widget.auth,
                   ),
                 ),
               );
@@ -88,9 +97,14 @@ final class HomeScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
-          if (store.isReadOnly) _StoreReadOnlyBanner(store: store),
+          _StoreStatusBanner(store: store),
+          if (allInvoices.isNotEmpty)
+            _InvoiceFilterBar(
+              selected: _filter,
+              onSelected: (filter) => setState(() => _filter = filter),
+            ),
           Expanded(
-            child: list.isEmpty
+            child: allInvoices.isEmpty
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
@@ -105,61 +119,39 @@ final class HomeScreen extends StatelessWidget {
                       ),
                     ),
                   )
+                : list.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        _emptyFilterMessage(_filter),
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontSize: 18,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  )
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: list.length,
                     itemBuilder: (context, index) {
                       final inv = list[index];
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 14),
-                        clipBehavior: Clip.antiAlias,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.outline.withValues(alpha: 0.65),
-                          ),
-                        ),
-                        child: InkWell(
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => InvoiceDetailScreen(
-                                  store: store,
-                                  settings: settings,
-                                  invoice: inv,
-                                ),
-                              ),
-                            );
-                          },
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 18,
-                              vertical: 14,
-                            ),
-                            title: Text(
-                              invoiceDocumentTitle(inv),
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                'Izdavanje: '
-                                '${formatInvoiceDateMedium(inv.issueDate)} '
-                                '· broj stavki: ${inv.lines.length}',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodyLarge?.copyWith(height: 1.4),
+                      return _InvoiceListItem(
+                        invoice: inv,
+                        onOpen: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => InvoiceDetailScreen(
+                                store: store,
+                                settings: widget.settings,
+                                invoice: inv,
                               ),
                             ),
-                            trailing: _InvoiceListActions(
-                              onPreviewPdf: () => _previewPdf(context, inv),
-                            ),
-                          ),
-                        ),
+                          );
+                        },
+                        onPreviewPdf: () => _previewPdf(context, inv),
                       );
                     },
                   ),
@@ -168,8 +160,218 @@ final class HomeScreen extends StatelessWidget {
       ),
       bottomNavigationBar: _InvoiceCreateActions(
         store: store,
-        settings: settings,
+        settings: widget.settings,
+        onInvoiceCreated: () =>
+            setState(() => _filter = _InvoiceHomeFilter.all),
       ),
+    );
+  }
+}
+
+enum _InvoiceHomeFilter { currentMonth, previousMonth, all }
+
+List<StoredInvoice> _filterInvoices(
+  List<StoredInvoice> invoices,
+  _InvoiceHomeFilter filter,
+  DateTime now,
+) {
+  return switch (filter) {
+    _InvoiceHomeFilter.currentMonth =>
+      invoices
+          .where((invoice) => _isSameMonth(invoice.issueDate, now))
+          .toList(),
+    _InvoiceHomeFilter.previousMonth => invoices.where((invoice) {
+      final previousMonth = DateTime(now.year, now.month - 1);
+      return _isSameMonth(invoice.issueDate, previousMonth);
+    }).toList(),
+    _InvoiceHomeFilter.all => invoices,
+  };
+}
+
+bool _isSameMonth(DateTime date, DateTime month) {
+  return date.year == month.year && date.month == month.month;
+}
+
+String _emptyFilterMessage(_InvoiceHomeFilter filter) {
+  return switch (filter) {
+    _InvoiceHomeFilter.currentMonth =>
+      'Nema računa za ovaj mjesec.\n\nPritisnite „Svi računi” za cijelu listu.',
+    _InvoiceHomeFilter.previousMonth =>
+      'Nema računa za prošli mjesec.\n\nPritisnite „Svi računi” za cijelu listu.',
+    _InvoiceHomeFilter.all => 'Nema sačuvanih računa.',
+  };
+}
+
+final class _InvoiceFilterBar extends StatelessWidget {
+  const _InvoiceFilterBar({required this.selected, required this.onSelected});
+
+  final _InvoiceHomeFilter selected;
+  final ValueChanged<_InvoiceHomeFilter> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final buttons = [
+            _InvoiceFilterButton(
+              selected: selected == _InvoiceHomeFilter.currentMonth,
+              icon: Icons.today_outlined,
+              label: 'Ovaj mjesec',
+              onPressed: () => onSelected(_InvoiceHomeFilter.currentMonth),
+            ),
+            _InvoiceFilterButton(
+              selected: selected == _InvoiceHomeFilter.previousMonth,
+              icon: Icons.history_rounded,
+              label: 'Prošli mjesec',
+              onPressed: () => onSelected(_InvoiceHomeFilter.previousMonth),
+            ),
+            _InvoiceFilterButton(
+              selected: selected == _InvoiceHomeFilter.all,
+              icon: Icons.list_alt_rounded,
+              label: 'Svi računi',
+              onPressed: () => onSelected(_InvoiceHomeFilter.all),
+            ),
+          ];
+          if (constraints.maxWidth < 560) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < buttons.length; i++) ...[
+                  if (i > 0) const SizedBox(height: 8),
+                  buttons[i],
+                ],
+              ],
+            );
+          }
+          return Row(
+            children: [
+              for (var i = 0; i < buttons.length; i++) ...[
+                if (i > 0) const SizedBox(width: 10),
+                Expanded(child: buttons[i]),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+final class _InvoiceFilterButton extends StatelessWidget {
+  const _InvoiceFilterButton({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = selected
+        ? FilledButton.styleFrom(minimumSize: const Size.fromHeight(48))
+        : OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48));
+    return selected
+        ? FilledButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            label: Text(label),
+            style: style,
+          )
+        : OutlinedButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            label: Text(label),
+            style: style,
+          );
+  }
+}
+
+final class _InvoiceListItem extends StatelessWidget {
+  const _InvoiceListItem({
+    required this.invoice,
+    required this.onOpen,
+    required this.onPreviewPdf,
+  });
+
+  final StoredInvoice invoice;
+  final VoidCallback onOpen;
+  final VoidCallback onPreviewPdf;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textScale = MediaQuery.textScalerOf(context).scale(17) / 17;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      clipBehavior: Clip.antiAlias,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: scheme.outline.withValues(alpha: 0.65)),
+      ),
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = _InvoiceListActions(onPreviewPdf: onPreviewPdf);
+              if (constraints.maxWidth < 420 || textScale > 1.35) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _InvoiceListText(invoice: invoice),
+                    const SizedBox(height: 12),
+                    Align(alignment: Alignment.centerRight, child: actions),
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(child: _InvoiceListText(invoice: invoice)),
+                  const SizedBox(width: 12),
+                  actions,
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _InvoiceListText extends StatelessWidget {
+  const _InvoiceListText({required this.invoice});
+
+  final StoredInvoice invoice;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          invoiceDocumentTitle(invoice),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Izdavanje: ${formatInvoiceDateMedium(invoice.issueDate)} '
+          '· broj stavki: ${invoice.lines.length}',
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.4),
+        ),
+      ],
     );
   }
 }
@@ -190,6 +392,7 @@ final class _InvoiceListActions extends StatelessWidget {
           icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
           label: const Text('PDF'),
           style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 44),
             visualDensity: VisualDensity.compact,
             padding: const EdgeInsets.symmetric(horizontal: 12),
           ),
@@ -202,34 +405,47 @@ final class _InvoiceListActions extends StatelessWidget {
 }
 
 final class _InvoiceCreateActions extends StatelessWidget {
-  const _InvoiceCreateActions({required this.store, required this.settings});
+  const _InvoiceCreateActions({
+    required this.store,
+    required this.settings,
+    required this.onInvoiceCreated,
+  });
 
   final InvoiceStoreController store;
   final AppSettingsController settings;
+  final VoidCallback onInvoiceCreated;
 
-  void _openAssistant(BuildContext context) {
+  Future<void> _openAssistant(BuildContext context) async {
     if (!store.canWrite) {
       showInvoiceStoreReadOnlyMessage(context, store);
       return;
     }
-    Navigator.of(context).push(
+    final invoiceCount = store.snapshot.invoices.length;
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
             InvoiceChatWizardScreen(store: store, settings: settings),
       ),
     );
+    if (context.mounted && store.snapshot.invoices.length > invoiceCount) {
+      onInvoiceCreated();
+    }
   }
 
-  void _openEditor(BuildContext context) {
+  Future<void> _openEditor(BuildContext context) async {
     if (!store.canWrite) {
       showInvoiceStoreReadOnlyMessage(context, store);
       return;
     }
-    Navigator.of(context).push(
+    final invoiceCount = store.snapshot.invoices.length;
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => InvoiceEditorScreen(store: store, settings: settings),
       ),
     );
+    if (context.mounted && store.snapshot.invoices.length > invoiceCount) {
+      onInvoiceCreated();
+    }
   }
 
   @override
@@ -256,12 +472,14 @@ final class _InvoiceCreateActions extends StatelessWidget {
                 final editor = OutlinedButton.icon(
                   onPressed: () => _openEditor(context),
                   icon: const Icon(Icons.add),
-                  label: const Text('Novi račun'),
+                  label: Text(
+                    settings.simpleMode ? 'Novi račun ručno' : 'Novi račun',
+                  ),
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size.fromHeight(52),
                   ),
                 );
-                if (constraints.maxWidth < 420) {
+                if (settings.simpleMode || constraints.maxWidth < 420) {
                   return Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -284,32 +502,78 @@ final class _InvoiceCreateActions extends StatelessWidget {
   }
 }
 
-final class _StoreReadOnlyBanner extends StatelessWidget {
-  const _StoreReadOnlyBanner({required this.store});
+final class _StoreStatusBanner extends StatelessWidget {
+  const _StoreStatusBanner({required this.store});
 
   final InvoiceStoreController store;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final scheme = Theme.of(context).colorScheme;
+    final accent = invoiceStoreSyncStatusColor(
+      scheme,
+      store.syncStatus,
+      isSaving: store.isSaving,
+    );
+    final message = store.isReadOnly
+        ? store.readOnlyMessage
+        : store.syncMessage ?? '';
     return Material(
-      color: scheme.errorContainer,
+      color: store.isReadOnly
+          ? scheme.errorContainer
+          : scheme.surfaceContainerHighest.withValues(alpha: 0.62),
       child: SafeArea(
         bottom: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.cloud_off_outlined, color: scheme.onErrorContainer),
+              if (store.isSaving)
+                SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: accent,
+                  ),
+                )
+              else
+                Icon(
+                  invoiceStoreSyncStatusIcon(store.syncStatus),
+                  color: accent,
+                ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  store.readOnlyMessage,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: scheme.onErrorContainer,
-                    fontWeight: FontWeight.w600,
-                    height: 1.3,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      invoiceStoreSyncStatusLabel(
+                        store.syncStatus,
+                        isSaving: store.isSaving,
+                      ),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: store.isReadOnly
+                            ? scheme.onErrorContainer
+                            : scheme.onSurface,
+                        fontWeight: FontWeight.w800,
+                        height: 1.25,
+                      ),
+                    ),
+                    if (message.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        message,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: store.isReadOnly
+                              ? scheme.onErrorContainer
+                              : scheme.onSurfaceVariant,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
