@@ -3,6 +3,7 @@ import 'package:app_taxi_invoice/src/auth/app_auth_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
+import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_chat_wizard_screen.dart';
@@ -23,6 +24,22 @@ final class HomeScreen extends StatelessWidget {
   final InvoiceStoreController store;
   final AppSettingsController settings;
   final AppAuthController auth;
+
+  Future<void> _previewPdf(BuildContext context, StoredInvoice invoice) async {
+    final bytes = await buildInvoicePdfBytes(invoice);
+    if (!context.mounted) {
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PdfPreviewScreen(
+          invoice: invoice,
+          pdfBytes: bytes,
+          initialSavedPdfPath: invoice.savedPdfPath,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -138,12 +155,8 @@ final class HomeScreen extends StatelessWidget {
                                 ).textTheme.bodyLarge?.copyWith(height: 1.4),
                               ),
                             ),
-                            trailing: Icon(
-                              Icons.chevron_right,
-                              size: 32,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.invoiceAccent,
+                            trailing: _InvoiceListActions(
+                              onPreviewPdf: () => _previewPdf(context, inv),
                             ),
                           ),
                         ),
@@ -157,6 +170,33 @@ final class HomeScreen extends StatelessWidget {
         store: store,
         settings: settings,
       ),
+    );
+  }
+}
+
+final class _InvoiceListActions extends StatelessWidget {
+  const _InvoiceListActions({required this.onPreviewPdf});
+
+  final VoidCallback onPreviewPdf;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FilledButton.tonalIcon(
+          onPressed: onPreviewPdf,
+          icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+          label: const Text('PDF'),
+          style: FilledButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Icon(Icons.chevron_right, size: 30, color: scheme.invoiceAccent),
+      ],
     );
   }
 }
