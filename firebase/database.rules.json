@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "stores": {
+      "shared": {
+        ".read": "auth != null && root.child('allowedUsers').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('allowedUsers').child(auth.uid).val() === true"
+      }
+    },
+    "allowedUsers": {
+      ".read": false,
+      ".write": false
+    }
+  }
+}

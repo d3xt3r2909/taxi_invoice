@@ -73,10 +73,16 @@ final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
   String? _text;
 
   @override
-  Future<String?> read() async => _text;
+  Future<InvoiceStoreTextRead> read() async => InvoiceStoreTextRead(
+    text: _text,
+    syncStatus: InvoiceStoreSyncStatus.localOnly,
+  );
 
   @override
-  Future<void> write(String text) async {
+  Future<InvoiceStoreTextWrite> write(String text) async {
     _text = text;
+    return const InvoiceStoreTextWrite(
+      syncStatus: InvoiceStoreSyncStatus.localOnly,
+    );
   }
 }

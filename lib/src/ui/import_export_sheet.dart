@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
+import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -43,12 +44,23 @@ Future<void> showImportExportSheet(
               ),
               leading: const Icon(Icons.merge_type),
               onTap: () async {
+                if (!store.canWrite) {
+                  showInvoiceStoreReadOnlyMessage(context, store);
+                  return;
+                }
                 final raw = await _pickJsonString();
                 if (raw == null) {
                   return;
                 }
                 final snap = storeSnapshotFromJsonString(raw);
-                await store.importMerge(snap);
+                try {
+                  await store.importMerge(snap);
+                } catch (e) {
+                  if (ctx.mounted) {
+                    showInvoiceStoreMutationError(context, e);
+                  }
+                  return;
+                }
                 if (ctx.mounted) {
                   Navigator.of(ctx).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -62,6 +74,10 @@ Future<void> showImportExportSheet(
               subtitle: const Text('Briše postojeći store u aplikaciji.'),
               leading: const Icon(Icons.warning_amber),
               onTap: () async {
+                if (!store.canWrite) {
+                  showInvoiceStoreReadOnlyMessage(context, store);
+                  return;
+                }
                 final ok = await showDialog<bool>(
                   context: ctx,
                   builder: (dctx) => AlertDialog(
@@ -85,7 +101,14 @@ Future<void> showImportExportSheet(
                 if (raw == null) {
                   return;
                 }
-                await store.importRawReplace(raw);
+                try {
+                  await store.importRawReplace(raw);
+                } catch (e) {
+                  if (ctx.mounted) {
+                    showInvoiceStoreMutationError(context, e);
+                  }
+                  return;
+                }
                 if (ctx.mounted) {
                   Navigator.of(ctx).pop();
                   ScaffoldMessenger.of(context).showSnackBar(

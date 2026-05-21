@@ -6,6 +6,7 @@ import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
 import 'package:app_taxi_invoice/src/ui/service_recipients_list_screen.dart';
+import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:app_taxi_invoice/src/util/invoice_output_save.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -153,6 +154,10 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
   }
 
   Future<void> _saveAndPreview() async {
+    if (!widget.store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, widget.store);
+      return;
+    }
     final lines = <InvoiceLine>[];
     for (final key in _lineKeys) {
       final s = key.currentState;
@@ -190,12 +195,14 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
       return;
     }
 
+    final citiesToRemember = <String>[];
+    final orderNamesToRemember = <String>[];
     for (final line in lines) {
       final segs = parsePutnaRelacija(line.putnaRelacija);
       for (final c in segs) {
-        await widget.store.rememberCity(c);
+        citiesToRemember.add(c);
       }
-      await widget.store.rememberOrderName(line.brojNarudzbe);
+      orderNamesToRemember.add(line.brojNarudzbe);
     }
 
     final inv = StoredInvoice(
@@ -211,7 +218,18 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
       savedPdfPath: widget.existing?.savedPdfPath,
     );
 
-    await widget.store.upsertInvoice(inv);
+    try {
+      await widget.store.upsertInvoiceWithSuggestions(
+        inv,
+        cities: citiesToRemember,
+        orderNames: orderNamesToRemember,
+      );
+    } catch (e) {
+      if (mounted) {
+        showInvoiceStoreMutationError(context, e);
+      }
+      return;
+    }
 
     if (!mounted) {
       return;
@@ -249,8 +267,14 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
       if (path == null) {
         return;
       }
-      await widget.store.setInvoiceSavedPdfPath(inv.id, path);
       savedPath = path;
+      try {
+        await widget.store.setInvoiceSavedPdfPath(inv.id, path);
+      } catch (e) {
+        if (mounted) {
+          showInvoiceStoreMutationError(context, e);
+        }
+      }
     }
 
     if (!mounted) {
@@ -592,7 +616,9 @@ final class _EditorSectionCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: scheme.invoiceAccentContainer.withValues(alpha: 0.55),
+                    color: scheme.invoiceAccentContainer.withValues(
+                      alpha: 0.55,
+                    ),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(icon, size: 24, color: scheme.invoiceAccent),

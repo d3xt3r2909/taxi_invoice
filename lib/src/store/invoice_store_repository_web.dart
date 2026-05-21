@@ -15,14 +15,20 @@ final class _SharedPreferencesInvoiceStoreTextStorage
   String get _key => '$_keyPrefix$_fileName';
 
   @override
-  Future<String?> read() async {
+  Future<InvoiceStoreTextRead> read() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_key);
+    return InvoiceStoreTextRead(
+      text: prefs.getString(_key),
+      syncStatus: InvoiceStoreSyncStatus.localOnly,
+    );
   }
 
   @override
-  Future<void> write(String text) async {
+  Future<InvoiceStoreTextWrite> write(String text) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_key, text);
+    return const InvoiceStoreTextWrite(
+      syncStatus: InvoiceStoreSyncStatus.localOnly,
+    );
   }
 }

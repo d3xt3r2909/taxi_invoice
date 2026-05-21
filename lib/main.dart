@@ -1,7 +1,13 @@
+import 'package:app_taxi_invoice/firebase_options.dart';
+import 'package:app_taxi_invoice/src/auth/app_auth_controller.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
-import 'package:app_taxi_invoice/src/ui/home_screen.dart';
+import 'package:app_taxi_invoice/src/store/invoice_store_repository.dart';
+import 'package:app_taxi_invoice/src/ui/auth_gate.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -31,21 +37,38 @@ ColorScheme _taxiInvoiceColorScheme(Brightness brightness) {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting(invoiceUiDateLocale);
-  final store = InvoiceStoreController();
+  final firebaseConfigured = DefaultFirebaseOptions.isConfigured;
+  if (firebaseConfigured) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+  final auth = firebaseConfigured
+      ? AppAuthController.configured(firebaseAuth: FirebaseAuth.instance)
+      : AppAuthController.notConfigured();
+  final store = firebaseConfigured
+      ? InvoiceStoreController(
+          repository: InvoiceStoreRepository.firebase(
+            database: FirebaseDatabase.instance,
+          ),
+        )
+      : InvoiceStoreController();
   final settings = AppSettingsController();
-  await Future.wait([store.load(), settings.load()]);
-  runApp(TaxiInvoiceApp(store: store, settings: settings));
+  await Future.wait([auth.load(), settings.load()]);
+  runApp(TaxiInvoiceApp(store: store, settings: settings, auth: auth));
 }
 
 final class TaxiInvoiceApp extends StatelessWidget {
   const TaxiInvoiceApp({
     required this.store,
     required this.settings,
+    required this.auth,
     super.key,
   });
 
   final InvoiceStoreController store;
   final AppSettingsController settings;
+  final AppAuthController auth;
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +102,7 @@ final class TaxiInvoiceApp extends StatelessWidget {
               child: child,
             );
           },
-          home: HomeScreen(store: store, settings: settings),
+          home: AuthGate(auth: auth, store: store, settings: settings),
         );
       },
     );
@@ -103,9 +126,7 @@ ThemeData _taxiInvoiceTheme(Brightness brightness) {
       height: 1.2,
     ),
     side: BorderSide(
-      color: isDark
-          ? scheme.onSurface.withValues(alpha: 0.42)
-          : scheme.outline,
+      color: isDark ? scheme.onSurface.withValues(alpha: 0.42) : scheme.outline,
       width: isDark ? 1.5 : 1,
     ),
     foregroundColor: isDark ? scheme.onSurface : null,

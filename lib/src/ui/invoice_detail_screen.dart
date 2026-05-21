@@ -7,6 +7,8 @@ import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_editor_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
+import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
+import 'package:app_taxi_invoice/src/util/pdf_download.dart';
 import 'package:app_taxi_invoice/src/util/reveal_saved_pdf.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -143,7 +145,14 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       ),
     );
     if (ok == true && context.mounted) {
-      await store.deleteInvoice(invoice.id);
+      try {
+        await store.deleteInvoice(invoice.id);
+      } catch (e) {
+        if (context.mounted) {
+          showInvoiceStoreMutationError(context, e);
+        }
+        return;
+      }
       if (context.mounted) {
         Navigator.of(context).pop();
       }
@@ -195,6 +204,10 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                       await _openLastSavedPdf(context, invoice);
                     case _InvoiceOverflowAction.delete:
                       if (context.mounted) {
+                        if (!store.canWrite) {
+                          showInvoiceStoreReadOnlyMessage(context, store);
+                          return;
+                        }
                         await _confirmAndDeleteInvoice(context, store, invoice);
                       }
                   }
@@ -239,6 +252,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                     const PopupMenuDivider(),
                     PopupMenuItem(
                       value: _InvoiceOverflowAction.delete,
+                      enabled: store.canWrite,
                       child: Row(
                         children: [
                           Icon(
@@ -322,6 +336,10 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                             shape: actionShape,
                           ),
                           onPressed: () {
+                            if (!store.canWrite) {
+                              showInvoiceStoreReadOnlyMessage(context, store);
+                              return;
+                            }
                             Navigator.of(context).push(
                               MaterialPageRoute<void>(
                                 builder: (_) => InvoiceEditorScreen(
@@ -351,7 +369,10 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
 enum _InvoiceOverflowAction { share, openSaved, delete }
 
 /// Tamna tema: jača granica kartice; svijetla ostaje na [ColorScheme.outline].
-BorderSide _invoiceDetailCardBorderSide(ColorScheme scheme, {double width = 1.2}) {
+BorderSide _invoiceDetailCardBorderSide(
+  ColorScheme scheme, {
+  double width = 1.2,
+}) {
   if (scheme.brightness == Brightness.dark) {
     return BorderSide(
       color: scheme.onSurface.withValues(alpha: 0.24),
@@ -655,7 +676,7 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
         pdfFileName: _pdfFileName,
         dynamicLayout: false,
         allowPrinting: false,
-        allowSharing: true,
+        allowSharing: false,
         // PDF is generated as fixed A4 portrait; we ignore `format` in `build`.
         canChangePageFormat: false,
         canChangeOrientation: false,
@@ -671,6 +692,18 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
                   : 'Prikaži u sistemskim datotekama',
               onPressed: () => _openSaved(context),
             ),
+          PdfPreviewAction(
+            icon: const Tooltip(
+              message: 'Sačuvaj PDF',
+              child: Icon(Icons.save_alt),
+            ),
+            onPressed: (context, build, pageFormat) async {
+              await downloadPdfBytes(
+                bytes: await build(pageFormat),
+                fileName: _pdfFileName,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.print),
             tooltip: 'Štampa',

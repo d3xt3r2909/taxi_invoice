@@ -18,17 +18,26 @@ final class _FileInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
   }
 
   @override
-  Future<String?> read() async {
+  Future<InvoiceStoreTextRead> read() async {
     final file = await _file();
     if (!await file.exists()) {
-      return null;
+      return const InvoiceStoreTextRead(
+        text: null,
+        syncStatus: InvoiceStoreSyncStatus.localOnly,
+      );
     }
-    return file.readAsString();
+    return InvoiceStoreTextRead(
+      text: await file.readAsString(),
+      syncStatus: InvoiceStoreSyncStatus.localOnly,
+    );
   }
 
   @override
-  Future<void> write(String text) async {
+  Future<InvoiceStoreTextWrite> write(String text) async {
     final file = await _file();
     await file.writeAsString(text);
+    return const InvoiceStoreTextWrite(
+      syncStatus: InvoiceStoreSyncStatus.localOnly,
+    );
   }
 }

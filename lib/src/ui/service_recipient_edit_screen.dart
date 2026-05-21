@@ -1,5 +1,6 @@
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
+import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
@@ -45,6 +46,10 @@ final class _ServiceRecipientEditScreenState
   }
 
   Future<void> _save() async {
+    if (!widget.store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, widget.store);
+      return;
+    }
     final name = _name.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(
@@ -58,7 +63,14 @@ final class _ServiceRecipientEditScreenState
       address: _address.text.trim(),
       jib: _jib.text.trim(),
     );
-    await widget.store.upsertServiceRecipient(recipient);
+    try {
+      await widget.store.upsertServiceRecipient(recipient);
+    } catch (e) {
+      if (mounted) {
+        showInvoiceStoreMutationError(context, e);
+      }
+      return;
+    }
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -67,6 +79,10 @@ final class _ServiceRecipientEditScreenState
   Future<void> _delete() async {
     final ex = widget.existing;
     if (ex == null) {
+      return;
+    }
+    if (!widget.store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, widget.store);
       return;
     }
     final ok = await showDialog<bool>(
@@ -90,7 +106,14 @@ final class _ServiceRecipientEditScreenState
       ),
     );
     if (ok == true && mounted) {
-      await widget.store.deleteServiceRecipient(ex.id);
+      try {
+        await widget.store.deleteServiceRecipient(ex.id);
+      } catch (e) {
+        if (mounted) {
+          showInvoiceStoreMutationError(context, e);
+        }
+        return;
+      }
       if (mounted) {
         Navigator.of(context).pop();
       }

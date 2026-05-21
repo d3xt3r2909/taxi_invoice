@@ -1,6 +1,7 @@
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/ui/service_recipient_edit_screen.dart';
+import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:flutter/material.dart';
 
 /// Lista sačuvanih naručilaca usluga (otvaranje / uređivanje).
@@ -60,6 +61,10 @@ final class ServiceRecipientsListScreen extends StatelessWidget {
                 ),
                 child: InkWell(
                   onTap: () {
+                    if (!store.canWrite) {
+                      showInvoiceStoreReadOnlyMessage(context, store);
+                      return;
+                    }
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => ServiceRecipientEditScreen(
@@ -105,6 +110,10 @@ final class ServiceRecipientsListScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
+          if (!store.canWrite) {
+            showInvoiceStoreReadOnlyMessage(context, store);
+            return;
+          }
           Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => ServiceRecipientEditScreen(store: store),

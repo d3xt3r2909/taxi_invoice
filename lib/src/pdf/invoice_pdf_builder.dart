@@ -152,9 +152,7 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                             left: pw.BorderSide(width: 0.8),
                             right: pw.BorderSide(width: 0.8),
                           ),
-                          columnWidths: const {
-                            0: pw.IntrinsicColumnWidth(),
-                          },
+                          columnWidths: const {0: pw.IntrinsicColumnWidth()},
                           children: [
                             pw.TableRow(
                               children: [

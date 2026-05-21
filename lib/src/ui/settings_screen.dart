@@ -1,6 +1,8 @@
+import 'package:app_taxi_invoice/src/auth/app_auth_controller.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/import_export_sheet.dart';
+import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -10,11 +12,13 @@ final class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
     required this.settings,
     required this.store,
+    required this.auth,
     super.key,
   });
 
   final AppSettingsController settings;
   final InvoiceStoreController store;
+  final AppAuthController auth;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +34,7 @@ final class SettingsScreen extends StatelessWidget {
         ),
       ),
       body: ListenableBuilder(
-        listenable: settings,
+        listenable: Listenable.merge([settings, store, auth]),
         builder: (context, _) {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -173,6 +177,42 @@ final class SettingsScreen extends StatelessWidget {
                   ],
                 ),
               ],
+              const SizedBox(height: 32),
+              Text(
+                'Cloud sync',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Prijavljen korisnik: ${auth.email ?? 'nije prijavljen'}',
+                style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Status: ${invoiceStoreSyncStatusLabel(store.syncStatus)}',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (store.syncMessage != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  store.syncMessage!,
+                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+                ),
+              ],
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                  await auth.signOut();
+                },
+                icon: const Icon(Icons.logout, size: 22),
+                label: const Text('Odjava'),
+              ),
               const SizedBox(height: 32),
               Text(
                 'Podaci (JSON)',
