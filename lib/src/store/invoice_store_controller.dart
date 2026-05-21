@@ -295,6 +295,10 @@ final class InvoiceStoreController extends ChangeNotifier {
     );
   }
 
+  Future<void> clearAllData() async {
+    await _replaceSnapshot(StoreSnapshot.empty());
+  }
+
   Future<String> exportJsonString() async =>
       storeSnapshotToJsonString(_snapshot);
 

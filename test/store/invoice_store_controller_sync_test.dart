@@ -127,6 +127,27 @@ void main() {
     writeGate.complete();
     await save;
   });
+
+  test('clearAllData removes invoices and suggestions', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(
+        StoreSnapshot.empty().copyWith(
+          cities: ['Sarajevo'],
+          orderNames: ['Zara'],
+          serviceRecipients: [_recipient()],
+          invoices: [_invoice(recipientId: 'recipient-1')],
+        ),
+      ),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+    );
+    await controller.load();
+
+    await controller.clearAllData();
+
+    expect(controller.snapshot.toJson(), StoreSnapshot.empty().toJson());
+  });
 }
 
 StoredInvoice _invoice({String? recipientId}) {

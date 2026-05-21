@@ -1,5 +1,6 @@
 import 'package:app_taxi_invoice/firebase_options.dart';
 import 'package:app_taxi_invoice/src/auth/app_auth_controller.dart';
+import 'package:app_taxi_invoice/src/auth/app_user_access_controller.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_encryption.dart';
@@ -47,6 +48,9 @@ Future<void> main() async {
   final auth = firebaseConfigured
       ? AppAuthController.configured(firebaseAuth: FirebaseAuth.instance)
       : AppAuthController.notConfigured();
+  final userAccess = firebaseConfigured
+      ? AppUserAccessController.configured(database: FirebaseDatabase.instance)
+      : AppUserAccessController.notConfigured();
   final encryption = firebaseConfigured
       ? InvoiceStoreEncryptionController(
           storage: InvoiceStoreRepository.createFirebaseTextStorage(
@@ -69,6 +73,7 @@ Future<void> main() async {
       store: store,
       settings: settings,
       auth: auth,
+      userAccess: userAccess,
       encryption: encryption,
     ),
   );
@@ -79,6 +84,7 @@ final class TaxiInvoiceApp extends StatelessWidget {
     required this.store,
     required this.settings,
     required this.auth,
+    required this.userAccess,
     this.encryption,
     super.key,
   });
@@ -86,6 +92,7 @@ final class TaxiInvoiceApp extends StatelessWidget {
   final InvoiceStoreController store;
   final AppSettingsController settings;
   final AppAuthController auth;
+  final AppUserAccessController userAccess;
   final InvoiceStoreEncryptionController? encryption;
 
   @override
@@ -124,6 +131,7 @@ final class TaxiInvoiceApp extends StatelessWidget {
             auth: auth,
             store: store,
             settings: settings,
+            userAccess: userAccess,
             encryption: encryption,
           ),
         );

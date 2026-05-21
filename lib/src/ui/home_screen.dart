@@ -1,8 +1,10 @@
 import 'package:app_taxi_invoice/src/pdf/invoice_pdf_builder.dart';
 import 'package:app_taxi_invoice/src/auth/app_auth_controller.dart';
+import 'package:app_taxi_invoice/src/auth/app_user_access_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
+import 'package:app_taxi_invoice/src/store/invoice_store_encryption.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
@@ -18,12 +20,16 @@ final class HomeScreen extends StatefulWidget {
     required this.store,
     required this.settings,
     required this.auth,
+    this.userAccess,
+    this.encryption,
     super.key,
   });
 
   final InvoiceStoreController store;
   final AppSettingsController settings;
   final AppAuthController auth;
+  final AppUserAccessController? userAccess;
+  final InvoiceStoreEncryptionController? encryption;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -88,6 +94,8 @@ final class _HomeScreenState extends State<HomeScreen> {
                     settings: widget.settings,
                     store: widget.store,
                     auth: widget.auth,
+                    userAccess: widget.userAccess,
+                    encryption: widget.encryption,
                   ),
                 ),
               );
@@ -211,49 +219,30 @@ final class _InvoiceFilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final buttons = [
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
             _InvoiceFilterButton(
               selected: selected == _InvoiceHomeFilter.currentMonth,
-              icon: Icons.today_outlined,
               label: 'Ovaj mjesec',
               onPressed: () => onSelected(_InvoiceHomeFilter.currentMonth),
             ),
+            const SizedBox(width: 8),
             _InvoiceFilterButton(
               selected: selected == _InvoiceHomeFilter.previousMonth,
-              icon: Icons.history_rounded,
               label: 'Prošli mjesec',
               onPressed: () => onSelected(_InvoiceHomeFilter.previousMonth),
             ),
+            const SizedBox(width: 8),
             _InvoiceFilterButton(
               selected: selected == _InvoiceHomeFilter.all,
-              icon: Icons.list_alt_rounded,
               label: 'Svi računi',
               onPressed: () => onSelected(_InvoiceHomeFilter.all),
             ),
-          ];
-          if (constraints.maxWidth < 560) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < buttons.length; i++) ...[
-                  if (i > 0) const SizedBox(height: 8),
-                  buttons[i],
-                ],
-              ],
-            );
-          }
-          return Row(
-            children: [
-              for (var i = 0; i < buttons.length; i++) ...[
-                if (i > 0) const SizedBox(width: 10),
-                Expanded(child: buttons[i]),
-              ],
-            ],
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -262,34 +251,29 @@ final class _InvoiceFilterBar extends StatelessWidget {
 final class _InvoiceFilterButton extends StatelessWidget {
   const _InvoiceFilterButton({
     required this.selected,
-    required this.icon,
     required this.label,
     required this.onPressed,
   });
 
   final bool selected;
-  final IconData icon;
   final String label;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final style = selected
-        ? FilledButton.styleFrom(minimumSize: const Size.fromHeight(48))
-        : OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48));
-    return selected
-        ? FilledButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon),
-            label: Text(label),
-            style: style,
-          )
-        : OutlinedButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon),
-            label: Text(label),
-            style: style,
-          );
+    final theme = Theme.of(context);
+    return ChoiceChip(
+      selected: selected,
+      onSelected: (_) => onPressed(),
+      label: Text(label),
+      showCheckmark: false,
+      visualDensity: VisualDensity.compact,
+      labelStyle: theme.textTheme.labelLarge?.copyWith(
+        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      side: BorderSide(color: theme.colorScheme.outlineVariant),
+    );
   }
 }
 

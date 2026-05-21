@@ -16,14 +16,28 @@ Realtime Database:
 ```json
 {
   "allowedUsers": {
-    "FIRST_AUTH_UID": true,
-    "SECOND_AUTH_UID": true,
-    "THIRD_AUTH_UID": true
+    "FIRST_AUTH_UID": {
+      "email": "admin@example.com",
+      "role": "admin"
+    },
+    "SECOND_AUTH_UID": {
+      "email": "user1@example.com",
+      "role": "user"
+    },
+    "THIRD_AUTH_UID": {
+      "email": "user2@example.com",
+      "role": "user"
+    }
   }
 }
 ```
 
 Deploy or paste the rules from `firebase/database.rules.json`.
+
+`role: "admin"` shows the administrator tools in app settings. Use it for
+only one trusted user. Admin can rotate the shared database password and reset
+all stored invoice data. Existing `UID: true` entries still work as normal
+users, but they do not get administrator tools.
 
 ## Database password
 

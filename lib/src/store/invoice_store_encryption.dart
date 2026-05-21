@@ -55,7 +55,10 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
 
   InvoiceStoreEncryptionStatus get status => _status;
   String? get message => _message;
-  bool get isUnlocked => _status.isUnlocked && _key != null;
+  bool get isUnlocked =>
+      (_status.isUnlocked ||
+          _status == InvoiceStoreEncryptionStatus.checking) &&
+      _key != null;
   bool get requiresSetup => _requiresSetup;
   double? get progress => _progress;
 
@@ -214,6 +217,76 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     }
   }
 
+  Future<void> changePassphrase({
+    required String currentPassphrase,
+    required String newPassphrase,
+    required bool rememberOnDevice,
+  }) async {
+    final userId = _requireUserId();
+    final previousKey = _requireKey();
+    _setStatus(InvoiceStoreEncryptionStatus.checking);
+    _setProgress(0);
+    try {
+      await _letUiPaint();
+      final current = _normalizePassphrase(currentPassphrase);
+      final next = _normalizePassphrase(newPassphrase);
+      final raw = (await _storage.read()).text;
+      if (raw == null ||
+          raw.trim().isEmpty ||
+          !isEncryptedInvoiceStoreText(raw)) {
+        throw const InvoiceStoreEncryptionException(
+          'Baza nema šifrovani sadržaj za promjenu šifre.',
+        );
+      }
+      final currentEnvelope = EncryptedInvoiceStoreEnvelope.fromJsonString(raw);
+      final currentKey = await _cryptor.deriveKeyAsync(
+        passphrase: current,
+        salt: currentEnvelope.salt,
+        iterations: currentEnvelope.iterations,
+        keyLength: currentEnvelope.keyLength,
+        onProgress: (progress) => _setProgress(progress * 0.45),
+      );
+      final plaintext = _cryptor.decrypt(currentEnvelope, currentKey);
+      final nextSalt = _cryptor.randomBytes(InvoiceStoreCryptor.saltLength);
+      final nextKey = await _cryptor.deriveKeyAsync(
+        passphrase: next,
+        salt: nextSalt,
+        iterations: _cryptor.iterations,
+        keyLength: InvoiceStoreCryptor.keyLength,
+        onProgress: (progress) => _setProgress(0.45 + progress * 0.5),
+      );
+      _setProgress(0.98);
+      final encrypted = _cryptor.encrypt(
+        plaintext: plaintext,
+        key: nextKey,
+        salt: nextSalt,
+        iterations: _cryptor.iterations,
+      );
+      await _storage.write(encrypted);
+      _key = _UnlockedStoreKey(
+        key: nextKey,
+        salt: nextSalt,
+        iterations: _cryptor.iterations,
+        keyLength: InvoiceStoreCryptor.keyLength,
+      );
+      if (rememberOnDevice) {
+        await _rememberedKeys.write(userId, _key!.toRememberedKey());
+      } else {
+        await _rememberedKeys.clear(userId);
+      }
+      _setStatus(InvoiceStoreEncryptionStatus.unlocked);
+    } on InvoiceStoreEncryptionException {
+      _restoreUnlockedAfterFailedChange(previousKey);
+      rethrow;
+    } catch (e) {
+      _restoreUnlockedAfterFailedChange(previousKey);
+      throw InvoiceStoreEncryptionException(
+        'Šifra baze nije promijenjena. Pokušajte ponovo.',
+        e,
+      );
+    }
+  }
+
   Future<void> forgetRememberedKey() async {
     final userId = _userId;
     if (userId != null) {
@@ -250,6 +323,7 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
 
   Future<InvoiceStoreTextWrite> writeEncrypted(String plaintext) async {
     final key = _requireKey();
+    await _verifyKeyMatchesStoredEnvelope(key);
     final encrypted = _cryptor.encrypt(
       plaintext: plaintext,
       key: key.key,
@@ -277,6 +351,25 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     return key;
   }
 
+  Future<void> _verifyKeyMatchesStoredEnvelope(_UnlockedStoreKey key) async {
+    final raw = (await _storage.read()).text;
+    if (raw == null ||
+        raw.trim().isEmpty ||
+        !isEncryptedInvoiceStoreText(raw)) {
+      return;
+    }
+    final envelope = EncryptedInvoiceStoreEnvelope.fromJsonString(raw);
+    if (!key.matches(
+      salt: envelope.salt,
+      iterations: envelope.iterations,
+      keyLength: envelope.keyLength,
+    )) {
+      throw const InvoiceStoreEncryptionException(
+        'Šifra baze je promijenjena na drugom uređaju. Odjavite se i unesite novu šifru.',
+      );
+    }
+  }
+
   String _normalizePassphrase(String passphrase) {
     final normalized = passphrase.trim();
     if (normalized.length < 8) {
@@ -302,6 +395,15 @@ final class InvoiceStoreEncryptionController extends ChangeNotifier {
     _message = message;
     _status = InvoiceStoreEncryptionStatus.error;
     _progress = null;
+    notifyListeners();
+  }
+
+  void _restoreUnlockedAfterFailedChange(_UnlockedStoreKey previousKey) {
+    _key = previousKey;
+    _message = null;
+    _requiresSetup = false;
+    _progress = null;
+    _status = InvoiceStoreEncryptionStatus.unlocked;
     notifyListeners();
   }
 
@@ -628,6 +730,16 @@ final class _UnlockedStoreKey {
   final Uint8List salt;
   final int iterations;
   final int keyLength;
+
+  bool matches({
+    required Uint8List salt,
+    required int iterations,
+    required int keyLength,
+  }) {
+    return this.iterations == iterations &&
+        this.keyLength == keyLength &&
+        _bytesEqual(this.salt, salt);
+  }
 
   RememberedInvoiceStoreKey toRememberedKey() {
     return RememberedInvoiceStoreKey(

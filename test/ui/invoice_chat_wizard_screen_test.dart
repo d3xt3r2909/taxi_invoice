@@ -25,7 +25,22 @@ void main() {
     expect(find.text('Naziv naručioca je obavezan.'), findsOneWidget);
   });
 
-  testWidgets('shows final review before saving', (tester) async {
+  testWidgets('keeps answered system questions in chat', (tester) async {
+    await tester.pumpInvoiceChatWizard();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Naziv naručioca'),
+      'Zara',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Nastavi'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Za koga je račun?'), findsOneWidget);
+    expect(find.text('Naručilac: Zara'), findsOneWidget);
+    expect(find.text('Koji je broj računa?'), findsOneWidget);
+  });
+
+  testWidgets('edits a previous recipient answer from chat', (tester) async {
     await tester.pumpInvoiceChatWizard();
     await tester.enterText(
       find.widgetWithText(TextField, 'Naziv naručioca'),
@@ -33,27 +48,42 @@ void main() {
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Nastavi'));
     await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Naručilac: Zara'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Naziv naručioca'),
+      'Zara Sarajevo',
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Nastavi'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Danas'));
+
+    expect(find.text('Naručilac: Zara Sarajevo'), findsOneWidget);
+  });
+
+  testWidgets('edits a completed line route from chat', (tester) async {
+    await tester.pumpInvoiceChatWizard();
+    await tester.completeOneLine();
+
+    await tester.drag(find.byType(ListView), const Offset(0, 300));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Isto kao račun'));
+    await tester.tap(find.text('Sarajevo - Mostar'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextField, 'Relacija'),
-      'Sarajevo - Mostar',
+      'Sarajevo - Zenica',
     );
     await tester.tap(find.widgetWithText(FilledButton, 'Nastavi'));
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Broj narudžbe ili ime'),
-      'Narudžba',
-    );
-    await tester.tap(find.widgetWithText(FilledButton, 'Nastavi'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Gotovo'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Iznos (KM)'), '45');
-    await tester.tap(find.widgetWithText(FilledButton, 'Nastavi'));
-    await tester.pumpAndSettle();
+
+    expect(find.text('Sarajevo - Zenica'), findsOneWidget);
+  });
+
+  testWidgets('shows final review inside chat before saving', (tester) async {
+    await tester.pumpInvoiceChatWizard();
+    await tester.completeOneLine();
     await tester.tap(find.widgetWithText(FilledButton, 'Gotovo'));
     await tester.pumpAndSettle();
 
@@ -71,5 +101,32 @@ extension on WidgetTester {
         ),
       ),
     );
+  }
+
+  Future<void> completeOneLine() async {
+    await enterText(find.widgetWithText(TextField, 'Naziv naručioca'), 'Zara');
+    await tap(find.widgetWithText(FilledButton, 'Nastavi'));
+    await pumpAndSettle();
+    await tap(find.widgetWithText(FilledButton, 'Nastavi'));
+    await pumpAndSettle();
+    await tap(find.text('Danas'));
+    await pumpAndSettle();
+    await tap(find.text('Isto kao račun'));
+    await pumpAndSettle();
+    await enterText(
+      find.widgetWithText(TextField, 'Relacija'),
+      'Sarajevo - Mostar',
+    );
+    await tap(find.widgetWithText(FilledButton, 'Nastavi'));
+    await pumpAndSettle();
+    await enterText(
+      find.widgetWithText(TextField, 'Broj narudžbe ili ime'),
+      'Narudžba',
+    );
+    await tap(find.widgetWithText(FilledButton, 'Nastavi'));
+    await pumpAndSettle();
+    await enterText(find.widgetWithText(TextField, 'Iznos (KM)'), '45');
+    await tap(find.widgetWithText(FilledButton, 'Nastavi'));
+    await pumpAndSettle();
   }
 }

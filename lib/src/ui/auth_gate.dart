@@ -1,5 +1,6 @@
 import 'package:app_taxi_invoice/firebase_options.dart';
 import 'package:app_taxi_invoice/src/auth/app_auth_controller.dart';
+import 'package:app_taxi_invoice/src/auth/app_user_access_controller.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_encryption.dart';
@@ -11,6 +12,7 @@ final class AuthGate extends StatefulWidget {
     required this.auth,
     required this.store,
     required this.settings,
+    this.userAccess,
     this.encryption,
     super.key,
   });
@@ -18,6 +20,7 @@ final class AuthGate extends StatefulWidget {
   final AppAuthController auth;
   final InvoiceStoreController store;
   final AppSettingsController settings;
+  final AppUserAccessController? userAccess;
   final InvoiceStoreEncryptionController? encryption;
 
   @override
@@ -53,6 +56,7 @@ final class _AuthGateState extends State<AuthGate> {
       if (widget.store.isLoaded) {
         widget.store.reset();
       }
+      widget.userAccess?.reset();
       _loadedUserId = null;
       _encryptionUserId = null;
       _loadError = null;
@@ -61,6 +65,7 @@ final class _AuthGateState extends State<AuthGate> {
       }
       return;
     }
+    widget.userAccess?.loadForUser(user.uid);
     final encryption = widget.encryption;
     if (encryption != null) {
       if (_encryptionUserId != user.uid && !_checkingEncryption) {
@@ -204,6 +209,8 @@ final class _AuthGateState extends State<AuthGate> {
       store: widget.store,
       settings: widget.settings,
       auth: widget.auth,
+      userAccess: widget.userAccess,
+      encryption: widget.encryption,
     );
   }
 }

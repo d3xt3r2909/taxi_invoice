@@ -31,6 +31,7 @@ final class InvoiceChatWizardScreen extends StatefulWidget {
 
 final class _InvoiceChatWizardScreenState
     extends State<InvoiceChatWizardScreen> {
+  final _messagesController = ScrollController();
   final _manualRecipientName = TextEditingController();
   final _manualRecipientAddress = TextEditingController();
   final _manualRecipientJib = TextEditingController();
@@ -45,12 +46,16 @@ final class _InvoiceChatWizardScreenState
   DateTime _issueDate = DateTime.now();
   DateTime _currentLineDate = DateTime.now();
   final _lines = <InvoiceLine>[];
+  _ChatStep? _returnAfterEdit;
+  int? _editingLineIndex;
+  _ChatStep? _editingLineField;
   bool _saving = false;
   String? _recipientNameError;
   String? _invoiceNumberError;
   String? _routeError;
   String? _orderNameError;
   String? _amountError;
+  String? _lastScrollSignature;
 
   @override
   void initState() {
@@ -63,6 +68,7 @@ final class _InvoiceChatWizardScreenState
 
   @override
   void dispose() {
+    _messagesController.dispose();
     _manualRecipientName.dispose();
     _manualRecipientAddress.dispose();
     _manualRecipientJib.dispose();
@@ -94,7 +100,7 @@ final class _InvoiceChatWizardScreenState
       _selectedRecipient = recipient;
       _manualRecipient = false;
       _recipientNameError = null;
-      _step = _ChatStep.invoiceNumber;
+      _step = _nextStepAfterEdit(_ChatStep.invoiceNumber);
     });
   }
 
@@ -115,7 +121,7 @@ final class _InvoiceChatWizardScreenState
     }
     setState(() {
       _recipientNameError = null;
-      _step = _ChatStep.invoiceNumber;
+      _step = _nextStepAfterEdit(_ChatStep.invoiceNumber);
     });
   }
 
@@ -136,7 +142,7 @@ final class _InvoiceChatWizardScreenState
     }
     setState(() {
       _invoiceNumberError = null;
-      _step = _ChatStep.issueDate;
+      _step = _nextStepAfterEdit(_ChatStep.issueDate);
     });
   }
 
@@ -153,7 +159,7 @@ final class _InvoiceChatWizardScreenState
     setState(() {
       _issueDate = picked;
       _currentLineDate = picked;
-      _step = _ChatStep.lineDate;
+      _step = _nextStepAfterEdit(_ChatStep.lineDate);
     });
   }
 
@@ -161,7 +167,7 @@ final class _InvoiceChatWizardScreenState
     setState(() {
       _issueDate = date;
       _currentLineDate = date;
-      _step = _ChatStep.lineDate;
+      _step = _nextStepAfterEdit(_ChatStep.lineDate);
     });
   }
 
@@ -177,14 +183,24 @@ final class _InvoiceChatWizardScreenState
     }
     setState(() {
       _currentLineDate = picked;
-      _step = _ChatStep.route;
+      if (_isEditingLineField(_ChatStep.lineDate)) {
+        _replaceEditedLine(datumRacuna: picked);
+        _finishLineFieldEdit();
+      } else {
+        _step = _nextStepAfterEdit(_ChatStep.route);
+      }
     });
   }
 
   void _setLineDate(DateTime date) {
     setState(() {
       _currentLineDate = date;
-      _step = _ChatStep.route;
+      if (_isEditingLineField(_ChatStep.lineDate)) {
+        _replaceEditedLine(datumRacuna: date);
+        _finishLineFieldEdit();
+      } else {
+        _step = _nextStepAfterEdit(_ChatStep.route);
+      }
     });
   }
 
@@ -199,7 +215,12 @@ final class _InvoiceChatWizardScreenState
     setState(() {
       _routeError = null;
       _route.text = trimmed;
-      _step = _ChatStep.orderName;
+      if (_isEditingLineField(_ChatStep.route)) {
+        _replaceEditedLine(putnaRelacija: trimmed);
+        _finishLineFieldEdit();
+      } else {
+        _step = _nextStepAfterEdit(_ChatStep.orderName);
+      }
     });
   }
 
@@ -214,7 +235,12 @@ final class _InvoiceChatWizardScreenState
     setState(() {
       _orderNameError = null;
       _orderName.text = trimmed;
-      _step = _ChatStep.amount;
+      if (_isEditingLineField(_ChatStep.orderName)) {
+        _replaceEditedLine(brojNarudzbe: trimmed);
+        _finishLineFieldEdit();
+      } else {
+        _step = _nextStepAfterEdit(_ChatStep.amount);
+      }
     });
   }
 
@@ -235,8 +261,16 @@ final class _InvoiceChatWizardScreenState
     setState(() {
       _amountError = null;
       _amount.text = _formatAmount(parsed);
-      _lines.add(line);
-      _step = _ChatStep.moreLines;
+      if (_isEditingLineField(_ChatStep.amount)) {
+        _replaceEditedLine(iznosKm: parsed);
+        _finishLineFieldEdit();
+      } else if (_editingLineIndex != null) {
+        _replaceEditedLineWith(line);
+        _finishLineFieldEdit();
+      } else {
+        _lines.add(line);
+        _step = _nextStepAfterEdit(_ChatStep.moreLines);
+      }
     });
   }
 
@@ -246,6 +280,9 @@ final class _InvoiceChatWizardScreenState
       _route.clear();
       _orderName.clear();
       _amount.clear();
+      _returnAfterEdit = null;
+      _editingLineIndex = null;
+      _editingLineField = null;
       _routeError = null;
       _orderNameError = null;
       _amountError = null;
@@ -348,6 +385,9 @@ final class _InvoiceChatWizardScreenState
       _issueDate = DateTime(now.year, now.month, now.day);
       _currentLineDate = _issueDate;
       _lines.clear();
+      _returnAfterEdit = null;
+      _editingLineIndex = null;
+      _editingLineField = null;
       _step = _ChatStep.recipient;
     });
   }
@@ -376,6 +416,15 @@ final class _InvoiceChatWizardScreenState
   }
 
   void _goBack() {
+    if (_returnAfterEdit != null) {
+      setState(() {
+        _step = _returnAfterEdit!;
+        _returnAfterEdit = null;
+        _editingLineIndex = null;
+        _editingLineField = null;
+      });
+      return;
+    }
     if (_step == _ChatStep.moreLines && _lines.isNotEmpty) {
       final last = _lines.removeLast();
       setState(() {
@@ -403,16 +452,96 @@ final class _InvoiceChatWizardScreenState
     });
   }
 
+  void _editStep(_ChatStep step) {
+    setState(() {
+      if (_step.index > step.index) {
+        _returnAfterEdit = _step;
+      }
+      if (step == _ChatStep.recipient && _selectedRecipient == null) {
+        _manualRecipient = true;
+      }
+      _step = step;
+    });
+  }
+
+  void _editLineField(int index, _ChatStep field) {
+    if (index < 0 || index >= _lines.length) {
+      return;
+    }
+    final line = _lines[index];
+    setState(() {
+      _editingLineIndex = index;
+      _editingLineField = field;
+      _returnAfterEdit = _step;
+      _currentLineDate = line.datumRacuna;
+      _route.text = line.putnaRelacija;
+      _orderName.text = line.brojNarudzbe;
+      _amount.text = _formatAmount(line.iznosKm);
+      _routeError = null;
+      _orderNameError = null;
+      _amountError = null;
+      _step = field;
+    });
+  }
+
+  _ChatStep _nextStepAfterEdit(_ChatStep fallback) {
+    final next = _returnAfterEdit ?? fallback;
+    _returnAfterEdit = null;
+    _editingLineIndex = null;
+    _editingLineField = null;
+    return next;
+  }
+
+  bool _isEditingLineField(_ChatStep field) {
+    return _editingLineIndex != null && _editingLineField == field;
+  }
+
+  void _replaceEditedLine({
+    DateTime? datumRacuna,
+    String? putnaRelacija,
+    String? brojNarudzbe,
+    double? iznosKm,
+  }) {
+    final index = _editingLineIndex;
+    if (index == null || index < 0 || index >= _lines.length) {
+      return;
+    }
+    final current = _lines[index];
+    _lines[index] = InvoiceLine(
+      datumRacuna: datumRacuna ?? current.datumRacuna,
+      putnaRelacija: putnaRelacija ?? current.putnaRelacija,
+      brojNarudzbe: brojNarudzbe ?? current.brojNarudzbe,
+      iznosKm: iznosKm ?? current.iznosKm,
+    );
+  }
+
+  void _replaceEditedLineWith(InvoiceLine line) {
+    final index = _editingLineIndex;
+    if (index == null || index < 0 || index >= _lines.length) {
+      return;
+    }
+    _lines[index] = line;
+  }
+
+  void _finishLineFieldEdit() {
+    _step = _returnAfterEdit ?? _ChatStep.summary;
+    _returnAfterEdit = null;
+    _editingLineIndex = null;
+    _editingLineField = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final screenHeight = MediaQuery.sizeOf(context).height;
+    _scheduleMessagesScrollIfNeeded();
     return Scaffold(
       appBar: AppBar(title: const Text('Pomoćnik za račun')),
       body: Column(
         children: [
           Expanded(
             child: ListView(
+              controller: _messagesController,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
               children: _messages(),
             ),
@@ -429,7 +558,7 @@ final class _InvoiceChatWizardScreenState
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: screenHeight * 0.46),
+                  constraints: BoxConstraints(maxHeight: screenHeight * 0.58),
                   child: _stepPanel(context),
                 ),
               ),
@@ -440,29 +569,241 @@ final class _InvoiceChatWizardScreenState
     );
   }
 
+  void _scheduleMessagesScrollIfNeeded() {
+    final signature = [
+      _step.index,
+      _returnAfterEdit?.index ?? -1,
+      _editingLineIndex ?? -1,
+      _editingLineField?.index ?? -1,
+      _lines.length,
+    ].join(':');
+    if (_lastScrollSignature == signature) {
+      return;
+    }
+    _lastScrollSignature = signature;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_messagesController.hasClients) {
+        return;
+      }
+      _messagesController.animateTo(
+        _messagesController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   List<Widget> _messages() {
-    return [
+    final visibleStepIndex = _visibleStepIndex;
+    final widgets = <Widget>[
       const _ChatBubble(
         text: 'Popunićemo račun kroz nekoliko jednostavnih pitanja.',
         fromUser: false,
       ),
-      if (_recipientName.isNotEmpty)
-        _ChatBubble(text: 'Naručilac: $_recipientName', fromUser: true),
-      if (_invoiceNumber.text.trim().isNotEmpty &&
-          _step.index > _ChatStep.invoiceNumber.index)
-        _ChatBubble(
-          text: 'Broj računa: ${_invoiceNumber.text.trim()}',
-          fromUser: true,
-        ),
-      if (_step.index > _ChatStep.issueDate.index)
-        _ChatBubble(
-          text: 'Datum računa: ${formatInvoiceDateMedium(_issueDate)}',
-          fromUser: true,
-        ),
-      for (var i = 0; i < _lines.length; i++)
-        _ChatBubble(text: _lineSummary(i, _lines[i]), fromUser: true),
-      _ChatBubble(text: _promptForStep(), fromUser: false),
     ];
+
+    _addQuestionAnswer(
+      widgets,
+      question: 'Za koga je račun?',
+      answer: _recipientName.isEmpty ? null : 'Naručilac: $_recipientName',
+      onEdit: _recipientName.isEmpty
+          ? null
+          : () => _editStep(_ChatStep.recipient),
+    );
+
+    if (visibleStepIndex >= _ChatStep.invoiceNumber.index) {
+      _addQuestionAnswer(
+        widgets,
+        question: 'Koji je broj računa?',
+        answer: visibleStepIndex > _ChatStep.invoiceNumber.index
+            ? 'Broj računa: ${_invoiceNumber.text.trim()}'
+            : null,
+        onEdit: visibleStepIndex > _ChatStep.invoiceNumber.index
+            ? () => _editStep(_ChatStep.invoiceNumber)
+            : null,
+      );
+    }
+
+    if (visibleStepIndex >= _ChatStep.issueDate.index) {
+      _addQuestionAnswer(
+        widgets,
+        question: 'Koji je datum računa?',
+        answer: visibleStepIndex > _ChatStep.issueDate.index
+            ? 'Datum računa: ${formatInvoiceDateMedium(_issueDate)}'
+            : null,
+        onEdit: visibleStepIndex > _ChatStep.issueDate.index
+            ? () => _editStep(_ChatStep.issueDate)
+            : null,
+      );
+    }
+
+    for (var i = 0; i < _lines.length; i++) {
+      _addCompletedLineMessages(widgets, i, _lines[i]);
+    }
+
+    if (_showCurrentLineDraft) {
+      _addCurrentLineDraftMessages(widgets, visibleStepIndex);
+    }
+
+    if (_step == _ChatStep.summary) {
+      widgets.add(
+        _ChatContentBubble(
+          child: _FinalReviewCard(
+            recipientName: _recipientName,
+            invoiceNumber: _invoiceNumber.text.trim(),
+            issueDate: _issueDate,
+            lines: _lines,
+            totalLabel: '${_formatAmount(_invoiceTotal)} KM',
+            amountFormatter: _formatAmount,
+          ),
+        ),
+      );
+    }
+
+    return widgets;
+  }
+
+  int get _visibleStepIndex {
+    final returnStep = _returnAfterEdit;
+    if (returnStep == null) {
+      return _step.index;
+    }
+    return _step.index > returnStep.index ? _step.index : returnStep.index;
+  }
+
+  bool get _showCurrentLineDraft {
+    if (_editingLineIndex != null) {
+      return false;
+    }
+    return switch (_step) {
+      _ChatStep.lineDate ||
+      _ChatStep.route ||
+      _ChatStep.orderName ||
+      _ChatStep.amount => true,
+      _ => false,
+    };
+  }
+
+  double get _invoiceTotal {
+    return _lines.fold<double>(0, (sum, line) => sum + line.iznosKm);
+  }
+
+  void _addQuestionAnswer(
+    List<Widget> widgets, {
+    required String question,
+    required String? answer,
+    VoidCallback? onEdit,
+  }) {
+    if (answer != null && answer.trim().isNotEmpty) {
+      widgets
+        ..add(_ChatBubble(text: question, fromUser: false))
+        ..add(_ChatBubble(text: answer, fromUser: true, onTap: onEdit));
+    }
+  }
+
+  void _addCompletedLineMessages(
+    List<Widget> widgets,
+    int index,
+    InvoiceLine line,
+  ) {
+    final lineNumber = index + 1;
+    widgets.add(
+      _ChatBubble(text: 'Stavka $lineNumber (vožnja)', fromUser: false),
+    );
+    _addQuestionAnswer(
+      widgets,
+      question: 'Koji je datum vožnje?',
+      answer: formatInvoiceDateMedium(line.datumRacuna),
+      onEdit: () => _editLineField(index, _ChatStep.lineDate),
+    );
+    _addQuestionAnswer(
+      widgets,
+      question: 'Koja je putna relacija?',
+      answer: line.putnaRelacija,
+      onEdit: () => _editLineField(index, _ChatStep.route),
+    );
+    _addQuestionAnswer(
+      widgets,
+      question: 'Koji je broj narudžbe ili ime?',
+      answer: line.brojNarudzbe,
+      onEdit: () => _editLineField(index, _ChatStep.orderName),
+    );
+    _addQuestionAnswer(
+      widgets,
+      question: 'Koji je iznos u KM?',
+      answer: '${_formatAmount(line.iznosKm)} KM',
+      onEdit: () => _editLineField(index, _ChatStep.amount),
+    );
+  }
+
+  void _addCurrentLineDraftMessages(
+    List<Widget> widgets,
+    int visibleStepIndex,
+  ) {
+    widgets.add(
+      _ChatBubble(
+        text: 'Stavka ${_lines.length + 1} (vožnja)',
+        fromUser: false,
+      ),
+    );
+    _addQuestionAnswer(
+      widgets,
+      question: 'Koji je datum vožnje?',
+      answer: visibleStepIndex > _ChatStep.lineDate.index
+          ? formatInvoiceDateMedium(_currentLineDate)
+          : null,
+      onEdit: visibleStepIndex > _ChatStep.lineDate.index
+          ? () => _editStep(_ChatStep.lineDate)
+          : null,
+    );
+    if (visibleStepIndex >= _ChatStep.route.index) {
+      _addQuestionAnswer(
+        widgets,
+        question: 'Koja je putna relacija?',
+        answer:
+            visibleStepIndex > _ChatStep.route.index &&
+                _route.text.trim().isNotEmpty
+            ? _route.text.trim()
+            : null,
+        onEdit:
+            visibleStepIndex > _ChatStep.route.index &&
+                _route.text.trim().isNotEmpty
+            ? () => _editStep(_ChatStep.route)
+            : null,
+      );
+    }
+    if (visibleStepIndex >= _ChatStep.orderName.index) {
+      _addQuestionAnswer(
+        widgets,
+        question: 'Koji je broj narudžbe ili ime?',
+        answer:
+            visibleStepIndex > _ChatStep.orderName.index &&
+                _orderName.text.trim().isNotEmpty
+            ? _orderName.text.trim()
+            : null,
+        onEdit:
+            visibleStepIndex > _ChatStep.orderName.index &&
+                _orderName.text.trim().isNotEmpty
+            ? () => _editStep(_ChatStep.orderName)
+            : null,
+      );
+    }
+    if (visibleStepIndex >= _ChatStep.amount.index) {
+      _addQuestionAnswer(
+        widgets,
+        question: 'Koji je iznos u KM?',
+        answer:
+            visibleStepIndex > _ChatStep.amount.index &&
+                _amount.text.trim().isNotEmpty
+            ? '${_amount.text.trim()} KM'
+            : null,
+        onEdit:
+            visibleStepIndex > _ChatStep.amount.index &&
+                _amount.text.trim().isNotEmpty
+            ? () => _editStep(_ChatStep.amount)
+            : null,
+      );
+    }
   }
 
   String _promptForStep() {
@@ -475,7 +816,7 @@ final class _InvoiceChatWizardScreenState
       _ChatStep.orderName => 'Koji je broj narudžbe ili ime?',
       _ChatStep.amount => 'Koji je iznos u KM?',
       _ChatStep.moreLines => 'Želite li dodati još jednu stavku?',
-      _ChatStep.summary => 'Provjerite račun i sačuvajte PDF.',
+      _ChatStep.summary => 'Provjerite prije čuvanja',
     };
   }
 
@@ -499,9 +840,19 @@ final class _InvoiceChatWizardScreenState
     );
   }
 
+  Widget _answerPanel({required List<Widget> children}) {
+    return _PanelColumn(
+      children: [
+        _ActiveQuestion(text: _promptForStep()),
+        const SizedBox(height: 12),
+        ...children,
+      ],
+    );
+  }
+
   Widget _recipientPanel(BuildContext context) {
     final recipients = widget.store.serviceRecipientsSorted;
-    return _PanelColumn(
+    return _answerPanel(
       children: [
         if (recipients.isNotEmpty && !_manualRecipient)
           Wrap(
@@ -555,7 +906,7 @@ final class _InvoiceChatWizardScreenState
 
   Widget _invoiceNumberPanel(BuildContext context) {
     final suggestions = suggestInvoiceNumbers(_issueDate);
-    return _PanelColumn(
+    return _answerPanel(
       children: [
         const _SuggestionLabel(
           text: 'Brzi izbor',
@@ -595,7 +946,7 @@ final class _InvoiceChatWizardScreenState
 
   Widget _issueDatePanel(BuildContext context) {
     final today = _dateOnly(DateTime.now());
-    return _PanelColumn(
+    return _answerPanel(
       children: [
         Wrap(
           spacing: 8,
@@ -634,7 +985,7 @@ final class _InvoiceChatWizardScreenState
 
   Widget _lineDatePanel(BuildContext context) {
     final today = _dateOnly(DateTime.now());
-    return _PanelColumn(
+    return _answerPanel(
       children: [
         Wrap(
           spacing: 8,
@@ -673,7 +1024,7 @@ final class _InvoiceChatWizardScreenState
   Widget _routePanel(BuildContext context) {
     final suggestions = suggestRoutes(widget.store.snapshot);
     final citySuggestions = widget.store.cities.take(16).toList();
-    return _PanelColumn(
+    return _answerPanel(
       children: [
         if (suggestions.isNotEmpty) ...[
           const _SuggestionLabel(
@@ -730,7 +1081,7 @@ final class _InvoiceChatWizardScreenState
 
   Widget _orderNamePanel(BuildContext context) {
     final suggestions = widget.store.orderNames.take(8).toList();
-    return _PanelColumn(
+    return _answerPanel(
       children: [
         if (suggestions.isNotEmpty) ...[
           const _SuggestionLabel(
@@ -772,7 +1123,7 @@ final class _InvoiceChatWizardScreenState
       widget.store.snapshot,
       route: _route.text,
     );
-    return _PanelColumn(
+    return _answerPanel(
       children: [
         if (suggestions.isNotEmpty) ...[
           const _SuggestionLabel(
@@ -810,7 +1161,7 @@ final class _InvoiceChatWizardScreenState
   }
 
   Widget _moreLinesPanel(BuildContext context) {
-    return _PanelColumn(
+    return _answerPanel(
       children: [
         Row(
           children: [
@@ -845,34 +1196,8 @@ final class _InvoiceChatWizardScreenState
   }
 
   Widget _summaryPanel(BuildContext context) {
-    final theme = Theme.of(context);
-    final total = _lines.fold<double>(0, (sum, line) => sum + line.iznosKm);
-    return _PanelColumn(
+    return _answerPanel(
       children: [
-        Text(
-          'Provjerite prije čuvanja',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Ako nešto nije tačno, pritisnite Nazad i popravite taj podatak.',
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            height: 1.35,
-          ),
-        ),
-        const SizedBox(height: 14),
-        _FinalReviewCard(
-          recipientName: _recipientName,
-          invoiceNumber: _invoiceNumber.text.trim(),
-          issueDate: _issueDate,
-          lines: _lines,
-          totalLabel: '${_formatAmount(total)} KM',
-          amountFormatter: _formatAmount,
-        ),
-        const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: _saving ? null : _save,
           icon: _saving
@@ -895,11 +1220,6 @@ final class _InvoiceChatWizardScreenState
         ),
       ],
     );
-  }
-
-  String _lineSummary(int index, InvoiceLine line) {
-    return 'Stavka ${index + 1}: ${line.putnaRelacija}, '
-        '${_formatAmount(line.iznosKm)} KM';
   }
 
   DateTime _dateOnly(DateTime date) {
@@ -940,35 +1260,142 @@ final class _PanelColumn extends StatelessWidget {
   }
 }
 
+final class _ActiveQuestion extends StatelessWidget {
+  const _ActiveQuestion({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.24),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.question_answer_outlined,
+              size: 22,
+              color: theme.colorScheme.onPrimaryContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                text,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: theme.colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w900,
+                  height: 1.25,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 final class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.text, required this.fromUser});
+  const _ChatBubble({required this.text, required this.fromUser, this.onTap});
 
   final String text;
   final bool fromUser;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final foreground = fromUser ? scheme.onPrimary : scheme.onSurface;
+    final bubble = DecoratedBox(
+      decoration: BoxDecoration(
+        color: fromUser ? scheme.invoiceAccent : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              text,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: foreground,
+                height: 1.35,
+              ),
+            ),
+            if (onTap != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.edit_outlined, size: 16, color: foreground),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Uredi',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
     return Align(
       alignment: fromUser ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 340),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: fromUser
-                ? scheme.invoiceAccent
-                : scheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Text(
-            text,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: fromUser ? scheme.onPrimary : scheme.onSurface,
-              height: 1.35,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: onTap == null
+              ? bubble
+              : Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: onTap,
+                    child: bubble,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _ChatContentBubble extends StatelessWidget {
+  const _ChatContentBubble({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(16),
             ),
+            child: Padding(padding: const EdgeInsets.all(10), child: child),
           ),
         ),
       ),
@@ -1160,6 +1587,21 @@ final class _FinalReviewCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              'Pregled računa',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Ako nešto nije tačno, pritisnite odgovor u razgovoru i popravite ga.',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: scheme.onSurfaceVariant,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
             _ReviewRow(
               icon: Icons.business_outlined,
               label: 'Naručilac',
@@ -1284,7 +1726,7 @@ final class _ReviewLine extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Stavka $index',
+              'Stavka $index (vožnja)',
               style: theme.textTheme.labelLarge?.copyWith(
                 color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w900,

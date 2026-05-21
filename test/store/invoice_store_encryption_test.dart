@@ -104,6 +104,83 @@ void main() {
       allOf(anyElement(allOf(greaterThan(0), lessThan(1))), contains(1)),
     );
   });
+
+  test('changePassphrase rotates the database password', () async {
+    const nextPassphrase = 'Nova Taxi Sifra 2026!';
+    final plainText = storeSnapshotToJsonString(
+      StoreSnapshot.empty().copyWith(orderNames: ['Zara']),
+    );
+    final storage = _MemoryTextStorage(text: plainText);
+    final encryption = _encryption(storage);
+    await encryption.inspectForUser(userId);
+    await encryption.setup(passphrase: passphrase, rememberOnDevice: false);
+
+    await encryption.changePassphrase(
+      currentPassphrase: passphrase,
+      newPassphrase: nextPassphrase,
+      rememberOnDevice: false,
+    );
+    encryption.lockInMemory();
+    await encryption.inspectForUser(userId);
+    await encryption.unlock(
+      passphrase: nextPassphrase,
+      rememberOnDevice: false,
+    );
+
+    expect((await encryption.readDecrypted()).text, plainText);
+  });
+
+  test(
+    'changePassphrase keeps the store unlocked when current password fails',
+    () async {
+      final storage = _MemoryTextStorage(text: null);
+      final encryption = _encryption(storage);
+      await encryption.inspectForUser(userId);
+      await encryption.setup(passphrase: passphrase, rememberOnDevice: false);
+
+      await expectLater(
+        encryption.changePassphrase(
+          currentPassphrase: 'wrong password',
+          newPassphrase: 'Nova Taxi Sifra 2026!',
+          rememberOnDevice: false,
+        ),
+        throwsA(isA<InvoiceStoreEncryptionException>()),
+      );
+
+      expect(encryption.isUnlocked, isTrue);
+    },
+  );
+
+  test(
+    'stale unlocked key cannot overwrite a rotated database password',
+    () async {
+      final storage = _MemoryTextStorage(text: null);
+      final adminEncryption = _encryption(storage);
+      await adminEncryption.inspectForUser(userId);
+      await adminEncryption.setup(
+        passphrase: passphrase,
+        rememberOnDevice: false,
+      );
+      final staleEncryption = _encryption(storage);
+      await staleEncryption.inspectForUser('firebase-user-2');
+      await staleEncryption.unlock(
+        passphrase: passphrase,
+        rememberOnDevice: false,
+      );
+      await adminEncryption.changePassphrase(
+        currentPassphrase: passphrase,
+        newPassphrase: 'Nova Taxi Sifra 2026!',
+        rememberOnDevice: false,
+      );
+
+      await expectLater(
+        staleEncryption.writeEncrypted(
+          storeSnapshotToJsonString(StoreSnapshot.empty()),
+        ),
+        throwsA(isA<InvoiceStoreEncryptionException>()),
+      );
+    },
+  );
 }
 
 InvoiceStoreEncryptionController _encryption(_MemoryTextStorage storage) {
