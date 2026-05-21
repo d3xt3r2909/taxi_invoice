@@ -5,6 +5,7 @@ import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
+import 'package:app_taxi_invoice/src/ui/invoice_chat_wizard_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_editor_screen.dart';
 import 'package:app_taxi_invoice/src/ui/service_recipients_list_screen.dart';
 import 'package:app_taxi_invoice/src/ui/settings_screen.dart';
@@ -71,6 +72,30 @@ final class HomeScreen extends StatelessWidget {
       body: Column(
         children: [
           if (store.isReadOnly) _StoreReadOnlyBanner(store: store),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  if (!store.canWrite) {
+                    showInvoiceStoreReadOnlyMessage(context, store);
+                    return;
+                  }
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => InvoiceChatWizardScreen(
+                        store: store,
+                        settings: settings,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.chat_bubble_outline_rounded),
+                label: const Text('Pomoćnik za račun'),
+              ),
+            ),
+          ),
           Expanded(
             child: list.isEmpty
                 ? Center(

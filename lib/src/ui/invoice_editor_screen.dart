@@ -6,6 +6,7 @@ import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
 import 'package:app_taxi_invoice/src/ui/service_recipients_list_screen.dart';
+import 'package:app_taxi_invoice/src/ui/invoice_route_helpers.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:app_taxi_invoice/src/util/invoice_output_save.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -14,7 +15,6 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
-const String _routeDash = ' - ';
 
 InputDecoration _invoiceEditorInputDecoration(
   BuildContext context, {
@@ -38,14 +38,6 @@ InputDecoration _invoiceEditorInputDecoration(
       borderSide: BorderSide(color: scheme.invoiceAccent, width: 2),
     ),
   );
-}
-
-List<String> parsePutnaRelacija(String route) {
-  return route
-      .split(RegExp(r'\s*[–—\-]\s*'))
-      .map((e) => e.trim())
-      .where((e) => e.isNotEmpty)
-      .toList();
 }
 
 final class InvoiceEditorScreen extends StatefulWidget {
@@ -198,7 +190,7 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
     final citiesToRemember = <String>[];
     final orderNamesToRemember = <String>[];
     for (final line in lines) {
-      final segs = parsePutnaRelacija(line.putnaRelacija);
+      final segs = parseInvoiceRoute(line.putnaRelacija);
       for (final c in segs) {
         citiesToRemember.add(c);
       }
@@ -702,7 +694,7 @@ final class _LineBlockState extends State<_LineBlock> {
     _datum = widget.initialDatum ?? DateTime.now();
     var parsed =
         widget.initialPutna != null && widget.initialPutna!.trim().isNotEmpty
-        ? parsePutnaRelacija(widget.initialPutna!)
+        ? parseInvoiceRoute(widget.initialPutna!)
         : <String>[];
     if (parsed.length < 2) {
       parsed = <String>[
@@ -767,7 +759,7 @@ final class _LineBlockState extends State<_LineBlock> {
     }
     return InvoiceLine(
       datumRacuna: _datum,
-      putnaRelacija: parts.join(_routeDash),
+      putnaRelacija: formatInvoiceRoute(parts),
       brojNarudzbe: nm,
       iznosKm: amount,
     );
