@@ -2,6 +2,7 @@ import 'package:app_taxi_invoice/firebase_options.dart';
 import 'package:app_taxi_invoice/src/auth/app_auth_controller.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
+import 'package:app_taxi_invoice/src/store/invoice_store_encryption.dart';
 import 'package:app_taxi_invoice/src/ui/home_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -10,12 +11,14 @@ final class AuthGate extends StatefulWidget {
     required this.auth,
     required this.store,
     required this.settings,
+    this.encryption,
     super.key,
   });
 
   final AppAuthController auth;
   final InvoiceStoreController store;
   final AppSettingsController settings;
+  final InvoiceStoreEncryptionController? encryption;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -23,37 +26,91 @@ final class AuthGate extends StatefulWidget {
 
 final class _AuthGateState extends State<AuthGate> {
   bool _loadingStore = false;
+  bool _checkingEncryption = false;
   String? _loadedUserId;
+  String? _encryptionUserId;
   String? _loadError;
 
   @override
   void initState() {
     super.initState();
     widget.auth.addListener(_handleAuthChanged);
+    widget.encryption?.addListener(_handleEncryptionChanged);
     _handleAuthChanged();
   }
 
   @override
   void dispose() {
     widget.auth.removeListener(_handleAuthChanged);
+    widget.encryption?.removeListener(_handleEncryptionChanged);
     super.dispose();
   }
 
   void _handleAuthChanged() {
     final user = widget.auth.user;
     if (user == null) {
+      widget.encryption?.lockInMemory();
       if (widget.store.isLoaded) {
         widget.store.reset();
       }
       _loadedUserId = null;
+      _encryptionUserId = null;
       _loadError = null;
       if (mounted) {
         setState(() {});
       }
       return;
     }
+    final encryption = widget.encryption;
+    if (encryption != null) {
+      if (_encryptionUserId != user.uid && !_checkingEncryption) {
+        _inspectEncryptionFor(user.uid);
+      }
+      if (encryption.isUnlocked &&
+          _loadedUserId != user.uid &&
+          !_loadingStore) {
+        _loadStoreFor(user.uid);
+      }
+      return;
+    }
     if (_loadedUserId != user.uid && !_loadingStore) {
       _loadStoreFor(user.uid);
+    }
+  }
+
+  void _handleEncryptionChanged() {
+    final user = widget.auth.user;
+    if (user == null) {
+      return;
+    }
+    if (widget.encryption?.isUnlocked == true &&
+        _loadedUserId != user.uid &&
+        !_loadingStore) {
+      _loadStoreFor(user.uid);
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _inspectEncryptionFor(String userId) async {
+    setState(() {
+      _checkingEncryption = true;
+      _encryptionUserId = userId;
+      _loadedUserId = null;
+      _loadError = null;
+    });
+    if (widget.store.isLoaded) {
+      widget.store.reset();
+    }
+    try {
+      await widget.encryption?.inspectForUser(userId);
+    } catch (_) {
+      _loadError = 'Šifra baze se nije mogla provjeriti. Pokušajte ponovo.';
+    } finally {
+      if (mounted) {
+        setState(() => _checkingEncryption = false);
+      }
     }
   }
 
@@ -91,6 +148,18 @@ final class _AuthGateState extends State<AuthGate> {
   }
 
   Widget _signedInContent(BuildContext context) {
+    final encryption = widget.encryption;
+    if (encryption != null && !encryption.isUnlocked) {
+      if (_checkingEncryption ||
+          encryption.status == InvoiceStoreEncryptionStatus.checking) {
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      return DatabasePasswordScreen(
+        encryption: encryption,
+        onSignOut: widget.auth.signOut,
+      );
+    }
+
     if (_loadError != null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Cloud sync')),
@@ -136,6 +205,159 @@ final class _AuthGateState extends State<AuthGate> {
       store: widget.store,
       settings: widget.settings,
       auth: widget.auth,
+    );
+  }
+}
+
+final class DatabasePasswordScreen extends StatefulWidget {
+  const DatabasePasswordScreen({
+    required this.encryption,
+    required this.onSignOut,
+    super.key,
+  });
+
+  final InvoiceStoreEncryptionController encryption;
+  final Future<void> Function() onSignOut;
+
+  @override
+  State<DatabasePasswordScreen> createState() => _DatabasePasswordScreenState();
+}
+
+final class _DatabasePasswordScreenState extends State<DatabasePasswordScreen> {
+  final _password = TextEditingController();
+  final _repeatPassword = TextEditingController();
+  bool _remember = true;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _repeatPassword.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final setup = widget.encryption.requiresSetup;
+    final password = _password.text;
+    if (setup && password.trim() != _repeatPassword.text.trim()) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Šifre nisu iste.')));
+      return;
+    }
+    if (setup) {
+      await widget.encryption.setup(
+        passphrase: password,
+        rememberOnDevice: _remember,
+      );
+    } else {
+      await widget.encryption.unlock(
+        passphrase: password,
+        rememberOnDevice: _remember,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final encryption = widget.encryption;
+    final setup = encryption.requiresSetup;
+    final checking = encryption.status == InvoiceStoreEncryptionStatus.checking;
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(setup ? 'Postavite šifru baze' : 'Otključajte bazu'),
+        actions: [
+          TextButton(onPressed: widget.onSignOut, child: const Text('Odjava')),
+        ],
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.all(24),
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 48,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 18),
+              Text(
+                setup
+                    ? 'Postavite zajedničku šifru baze. Svi odobreni korisnici moraju koristiti istu šifru.'
+                    : 'Unesite zajedničku šifru baze za prikaz računa.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                autofillHints: const [AutofillHints.password],
+                onSubmitted: (_) {
+                  if (!setup && !checking) {
+                    _submit();
+                  }
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Šifra baze',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (setup) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _repeatPassword,
+                  obscureText: true,
+                  autofillHints: const [AutofillHints.password],
+                  onSubmitted: (_) {
+                    if (!checking) {
+                      _submit();
+                    }
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Ponovite šifru baze',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: _remember,
+                onChanged: checking
+                    ? null
+                    : (value) {
+                        setState(() => _remember = value ?? true);
+                      },
+                title: const Text('Zapamti šifru na ovom uređaju'),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+              ),
+              if (encryption.message != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  encryption.message!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              FilledButton(
+                onPressed: checking ? null : _submit,
+                child: checking
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(setup ? 'Postavi šifru' : 'Otključaj'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

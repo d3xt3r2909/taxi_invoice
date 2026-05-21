@@ -2,6 +2,7 @@ import 'package:app_taxi_invoice/firebase_options.dart';
 import 'package:app_taxi_invoice/src/auth/app_auth_controller.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
+import 'package:app_taxi_invoice/src/store/invoice_store_encryption.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_repository.dart';
 import 'package:app_taxi_invoice/src/ui/auth_gate.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
@@ -46,16 +47,31 @@ Future<void> main() async {
   final auth = firebaseConfigured
       ? AppAuthController.configured(firebaseAuth: FirebaseAuth.instance)
       : AppAuthController.notConfigured();
+  final encryption = firebaseConfigured
+      ? InvoiceStoreEncryptionController(
+          storage: InvoiceStoreRepository.createFirebaseTextStorage(
+            database: FirebaseDatabase.instance,
+          ),
+        )
+      : null;
   final store = firebaseConfigured
       ? InvoiceStoreController(
           repository: InvoiceStoreRepository.firebase(
             database: FirebaseDatabase.instance,
+            encryption: encryption,
           ),
         )
       : InvoiceStoreController();
   final settings = AppSettingsController();
   await Future.wait([auth.load(), settings.load()]);
-  runApp(TaxiInvoiceApp(store: store, settings: settings, auth: auth));
+  runApp(
+    TaxiInvoiceApp(
+      store: store,
+      settings: settings,
+      auth: auth,
+      encryption: encryption,
+    ),
+  );
 }
 
 final class TaxiInvoiceApp extends StatelessWidget {
@@ -63,12 +79,14 @@ final class TaxiInvoiceApp extends StatelessWidget {
     required this.store,
     required this.settings,
     required this.auth,
+    this.encryption,
     super.key,
   });
 
   final InvoiceStoreController store;
   final AppSettingsController settings;
   final AppAuthController auth;
+  final InvoiceStoreEncryptionController? encryption;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +120,12 @@ final class TaxiInvoiceApp extends StatelessWidget {
               child: child,
             );
           },
-          home: AuthGate(auth: auth, store: store, settings: settings),
+          home: AuthGate(
+            auth: auth,
+            store: store,
+            settings: settings,
+            encryption: encryption,
+          ),
         );
       },
     );

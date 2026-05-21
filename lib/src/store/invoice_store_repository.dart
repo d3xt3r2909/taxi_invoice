@@ -1,5 +1,6 @@
 import 'package:app_taxi_invoice/src/store/cached_invoice_store_text_storage.dart';
 import 'package:app_taxi_invoice/src/store/firebase_invoice_store_text_storage.dart';
+import 'package:app_taxi_invoice/src/store/invoice_store_encryption.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_text_storage.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -17,15 +18,25 @@ final class InvoiceStoreRepository {
   InvoiceStoreRepository.firebase({
     required FirebaseDatabase database,
     String cloudPath = 'stores/shared/taxi_invoice_store_json',
-  }) : _storage = CachedInvoiceStoreTextStorage(
-         cloud: FirebaseInvoiceStoreTextStorage(
-           database: database,
-           path: cloudPath,
-         ),
-         cache: platform.createInvoiceStoreTextStorage(fileName),
-       );
+    InvoiceStoreEncryptionController? encryption,
+  }) : _storage = encryption == null
+           ? createFirebaseTextStorage(database: database, cloudPath: cloudPath)
+           : EncryptedInvoiceStoreTextStorage(encryption: encryption);
 
   static const String fileName = 'taxi_invoice_store.json';
+
+  static InvoiceStoreTextStorage createFirebaseTextStorage({
+    required FirebaseDatabase database,
+    String cloudPath = 'stores/shared/taxi_invoice_store_json',
+  }) {
+    return CachedInvoiceStoreTextStorage(
+      cloud: FirebaseInvoiceStoreTextStorage(
+        database: database,
+        path: cloudPath,
+      ),
+      cache: platform.createInvoiceStoreTextStorage(fileName),
+    );
+  }
 
   final InvoiceStoreTextStorage _storage;
   InvoiceStoreSyncStatus _syncStatus = InvoiceStoreSyncStatus.localOnly;

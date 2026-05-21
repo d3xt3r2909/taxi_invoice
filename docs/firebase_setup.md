@@ -25,6 +25,19 @@ Realtime Database:
 
 Deploy or paste the rules from `firebase/database.rules.json`.
 
+## Database password
+
+After the first Firebase sign-in, the app asks the first user to set a shared
+database password. Existing plain JSON is encrypted at that point. Give the same
+password privately to the other approved users.
+
+The `Zapamti šifru na ovom uređaju` option stores a derived unlock key only on
+that browser/device. Do not put the database password in GitHub secrets,
+`android_config.json`, or source code.
+
+If the database password is forgotten and no remembered device can still unlock
+the app, the encrypted invoice JSON cannot be recovered.
+
 For local runs, copy `android_config.example.json` to `android_config.json` and
 fill in the Firebase values. `android_config.json` is ignored by Git.
 

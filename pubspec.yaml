@@ -24,6 +24,7 @@ dependencies:
   open_file: ^3.5.11
   shared_preferences: ^2.5.5
   path: ^1.9.1
+  pointycastle: ^3.9.1
   firebase_core: ^4.9.0
   firebase_auth: ^6.5.1
   firebase_database: ^12.4.1
