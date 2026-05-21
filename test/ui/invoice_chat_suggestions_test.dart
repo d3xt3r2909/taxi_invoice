@@ -3,19 +3,6 @@ import 'package:app_taxi_invoice/src/ui/invoice_chat_suggestions.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('suggestNextInvoiceNumber increments latest numeric invoice prefix', () {
-    final invoices = [
-      _invoice(invoiceNumber: '106/26', createdAt: DateTime(2026, 5, 1)),
-    ];
-
-    final suggestion = suggestNextInvoiceNumber(
-      invoices,
-      DateTime(2026, 5, 21),
-    );
-
-    expect(suggestion, '107/26');
-  });
-
   test('suggestRoutes returns frequent routes first', () {
     final snapshot = StoreSnapshot.empty().copyWith(
       invoices: [

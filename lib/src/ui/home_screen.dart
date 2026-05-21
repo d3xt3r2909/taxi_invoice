@@ -78,8 +78,8 @@ final class HomeScreen extends StatelessWidget {
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
-                        'Nema sačuvanih računa.\n\nDodajte prvi pritiskom na '
-                        'jedno od dugmadi dolje.',
+                        'Nema sačuvanih računa.\n\nNajlakše je početi preko '
+                        'dugmeta „Pomoćnik za račun” dolje.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           fontSize: 18,
@@ -205,15 +205,21 @@ final class _InvoiceCreateActions extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final assistant = OutlinedButton.icon(
+                final assistant = FilledButton.icon(
                   onPressed: () => _openAssistant(context),
                   icon: const Icon(Icons.chat_bubble_outline_rounded),
                   label: const Text('Pomoćnik za račun'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
                 );
-                final editor = FilledButton.icon(
+                final editor = OutlinedButton.icon(
                   onPressed: () => _openEditor(context),
                   icon: const Icon(Icons.add),
                   label: const Text('Novi račun'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
                 );
                 if (constraints.maxWidth < 420) {
                   return Column(

@@ -3,6 +3,7 @@ import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
+import 'package:app_taxi_invoice/src/ui/invoice_number.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:app_taxi_invoice/src/util/invoice_output_save.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -19,6 +20,15 @@ Future<bool> saveInvoiceAndOpenPdfPreview({
 }) async {
   if (!store.canWrite) {
     showInvoiceStoreReadOnlyMessage(context, store);
+    return false;
+  }
+  final canSaveDuplicate = await confirmDuplicateInvoiceNumberIfNeeded(
+    context: context,
+    store: store,
+    invoiceNumber: invoice.invoiceNumber,
+    existingInvoiceId: invoice.id,
+  );
+  if (!context.mounted || !canSaveDuplicate) {
     return false;
   }
   try {

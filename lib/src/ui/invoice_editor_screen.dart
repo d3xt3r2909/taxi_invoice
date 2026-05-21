@@ -5,6 +5,7 @@ import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
+import 'package:app_taxi_invoice/src/ui/invoice_number.dart';
 import 'package:app_taxi_invoice/src/ui/service_recipients_list_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_route_helpers.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
@@ -170,11 +171,18 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
       lines.add(line);
     }
 
-    final no = _invoiceNo.text.trim();
+    final no = normalizeInvoiceNumberForSave(_invoiceNo.text);
+    _invoiceNo.text = no;
     if (no.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Unesite broj računa.')));
+      return;
+    }
+    if (!isValidInvoiceNumberFormat(no)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Broj računa mora biti u formatu 05/26.')),
+      );
       return;
     }
 
@@ -184,6 +192,16 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
           content: Text('Unesite naziv naručioca (ili ga odaberite iz liste).'),
         ),
       );
+      return;
+    }
+
+    final canSaveDuplicate = await confirmDuplicateInvoiceNumberIfNeeded(
+      context: context,
+      store: widget.store,
+      invoiceNumber: no,
+      existingInvoiceId: widget.existing?.id,
+    );
+    if (!mounted || !canSaveDuplicate) {
       return;
     }
 
@@ -319,12 +337,31 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
               children: [
                 TextField(
                   controller: _invoiceNo,
+                  keyboardType: TextInputType.text,
+                  inputFormatters: const [InvoiceNumberInputFormatter()],
                   textCapitalization: TextCapitalization.characters,
                   decoration: _invoiceEditorInputDecoration(
                     context,
                     label: 'Broj računa',
-                    hint: 'npr. 106/26',
+                    hint: 'npr. 05/26',
                   ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final invoiceNumber in suggestInvoiceNumbers(
+                      _issueDate,
+                    ))
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() => _invoiceNo.text = invoiceNumber);
+                        },
+                        icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                        label: Text(invoiceNumber),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 Material(

@@ -1,30 +1,6 @@
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_route_helpers.dart';
 
-String suggestNextInvoiceNumber(List<StoredInvoice> invoices, DateTime now) {
-  if (invoices.isEmpty) {
-    return '1/${_twoDigitYear(now)}';
-  }
-  final sorted = List<StoredInvoice>.from(invoices)
-    ..sort((a, b) {
-      final created = b.createdAt.compareTo(a.createdAt);
-      if (created != 0) {
-        return created;
-      }
-      return b.issueDate.compareTo(a.issueDate);
-    });
-  final previous = sorted.first.invoiceNumber.trim();
-  final match = RegExp(r'^(\d+)(.*)$').firstMatch(previous);
-  if (match == null) {
-    return '${invoices.length + 1}/${_twoDigitYear(now)}';
-  }
-  final number = int.tryParse(match.group(1) ?? '');
-  if (number == null) {
-    return '${invoices.length + 1}/${_twoDigitYear(now)}';
-  }
-  return '${number + 1}${match.group(2) ?? ''}';
-}
-
 List<String> suggestRoutes(StoreSnapshot snapshot, {int limit = 6}) {
   final stats = <String, _SuggestionStats>{};
   for (final invoice in snapshot.invoices) {
@@ -82,10 +58,6 @@ List<double> suggestAmounts(
     source.values,
     limit,
   ).map((e) => double.parse(e.label)).toList();
-}
-
-String _twoDigitYear(DateTime date) {
-  return (date.year % 100).toString().padLeft(2, '0');
 }
 
 List<_SuggestionStats> _ranked(Iterable<_SuggestionStats> values, int limit) {

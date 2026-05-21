@@ -69,6 +69,17 @@ final class InvoiceStoreController extends ChangeNotifier {
     return null;
   }
 
+  bool hasInvoiceNumber(String invoiceNumber, {String? exceptInvoiceId}) {
+    final normalized = invoiceNumber.trim().toLowerCase();
+    if (normalized.isEmpty) {
+      return false;
+    }
+    return _snapshot.invoices.any((invoice) {
+      return invoice.id != exceptInvoiceId &&
+          invoice.invoiceNumber.trim().toLowerCase() == normalized;
+    });
+  }
+
   ServiceRecipient? matchingServiceRecipient({
     required String name,
     String address = '',

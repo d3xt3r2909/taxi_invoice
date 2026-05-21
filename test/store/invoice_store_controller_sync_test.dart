@@ -75,6 +75,37 @@ void main() {
 
     expect(match?.id, 'recipient-1');
   });
+
+  test('hasInvoiceNumber ignores the excluded invoice id', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(
+        StoreSnapshot.empty().copyWith(invoices: [_invoice()]),
+      ),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+    );
+    await controller.load();
+
+    expect(
+      controller.hasInvoiceNumber('1/26', exceptInvoiceId: 'invoice-1'),
+      isFalse,
+    );
+  });
+
+  test('hasInvoiceNumber detects duplicate invoice numbers', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(
+        StoreSnapshot.empty().copyWith(invoices: [_invoice()]),
+      ),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+    );
+    await controller.load();
+
+    expect(controller.hasInvoiceNumber(' 1/26 '), isTrue);
+  });
 }
 
 StoredInvoice _invoice({String? recipientId}) {

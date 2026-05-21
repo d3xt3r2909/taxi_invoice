@@ -4,6 +4,7 @@ import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_chat_suggestions.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
+import 'package:app_taxi_invoice/src/ui/invoice_number.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_route_helpers.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_save_preview_flow.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
@@ -52,10 +53,7 @@ final class _InvoiceChatWizardScreenState
     final now = DateTime.now();
     _issueDate = DateTime(now.year, now.month, now.day);
     _currentLineDate = _issueDate;
-    _invoiceNumber.text = suggestNextInvoiceNumber(
-      widget.store.snapshot.invoices,
-      now,
-    );
+    _invoiceNumber.text = suggestInvoiceNumbers(now)[1];
   }
 
   @override
@@ -110,8 +108,14 @@ final class _InvoiceChatWizardScreenState
   }
 
   void _confirmInvoiceNumber() {
-    if (_invoiceNumber.text.trim().isEmpty) {
+    final invoiceNumber = normalizeInvoiceNumberForSave(_invoiceNumber.text);
+    _invoiceNumber.text = invoiceNumber;
+    if (invoiceNumber.isEmpty) {
       _showMessage('Unesite broj računa.');
+      return;
+    }
+    if (!isValidInvoiceNumberFormat(invoiceNumber)) {
+      _showMessage('Broj računa mora biti u formatu 05/26.');
       return;
     }
     setState(() => _step = _ChatStep.issueDate);
@@ -231,8 +235,14 @@ final class _InvoiceChatWizardScreenState
       showInvoiceStoreReadOnlyMessage(context, widget.store);
       return;
     }
-    if (_recipientName.isEmpty || _invoiceNumber.text.trim().isEmpty) {
+    final invoiceNumber = normalizeInvoiceNumberForSave(_invoiceNumber.text);
+    _invoiceNumber.text = invoiceNumber;
+    if (_recipientName.isEmpty || invoiceNumber.isEmpty) {
       _showMessage('Nedostaju osnovni podaci računa.');
+      return;
+    }
+    if (!isValidInvoiceNumberFormat(invoiceNumber)) {
+      _showMessage('Broj računa mora biti u formatu 05/26.');
       return;
     }
     if (_lines.isEmpty) {
@@ -243,7 +253,7 @@ final class _InvoiceChatWizardScreenState
     final serviceRecipientToRemember = _manualServiceRecipientToRemember();
     final invoice = StoredInvoice(
       id: _uuid.v4(),
-      invoiceNumber: _invoiceNumber.text.trim(),
+      invoiceNumber: invoiceNumber,
       issueDate: _issueDate,
       createdAt: DateTime.now(),
       lines: _lines,
@@ -473,11 +483,36 @@ final class _InvoiceChatWizardScreenState
   }
 
   Widget _invoiceNumberPanel(BuildContext context) {
+    final suggestions = suggestInvoiceNumbers(_issueDate);
     return _PanelColumn(
       children: [
+        const _SuggestionLabel(
+          text: 'Brzi izbor',
+          icon: Icons.calendar_month_outlined,
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final invoiceNumber in suggestions)
+              _ChoiceButton(
+                icon: Icons.receipt_long_outlined,
+                label: invoiceNumber,
+                onPressed: () {
+                  _invoiceNumber.text = invoiceNumber;
+                  _confirmInvoiceNumber();
+                },
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
         _LargeTextField(
           controller: _invoiceNumber,
           label: 'Broj računa',
+          hint: 'npr. 05/26',
+          keyboardType: TextInputType.text,
+          inputFormatters: const [InvoiceNumberInputFormatter()],
           textCapitalization: TextCapitalization.characters,
         ),
         const SizedBox(height: 12),
