@@ -1,16 +1,22 @@
-# app_taxi_invoice
+# Taxi Invoice
 
-A new Flutter project.
+Standalone Flutter app for generating taxi invoice PDFs.
 
-## Getting Started
+## GitHub Pages
 
-This project is a starting point for a Flutter application.
+The web app is deployed with GitHub Actions from `main`.
 
-A few resources to get you started if this is your first Flutter project:
+Live URL:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```text
+https://d3xt3r2909.github.io/taxi_invoice/
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The workflow builds Flutter web with the repository base path:
+
+```sh
+flutter build web --release --base-href "/taxi_invoice/"
+```
+
+On the first deploy, make sure repository Settings > Pages uses GitHub Actions
+as the publishing source.

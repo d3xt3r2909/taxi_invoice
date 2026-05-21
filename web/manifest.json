@@ -1,11 +1,11 @@
 {
-    "name": "app_taxi_invoice",
-    "short_name": "app_taxi_invoice",
+    "name": "Taxi Invoice",
+    "short_name": "Taxi Invoice",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Standalone taxi invoice PDF generator.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
