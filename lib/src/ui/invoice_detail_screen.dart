@@ -70,12 +70,7 @@ class InvoiceDetailScreen extends StatefulWidget {
 
 class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   StoredInvoice? _resolveInvoice() {
-    for (final i in widget.store.snapshot.invoices) {
-      if (i.id == widget.invoice.id) {
-        return i;
-      }
-    }
-    return null;
+    return widget.store.invoiceById(widget.invoice.id);
   }
 
   Future<void> _previewPdf(BuildContext context, StoredInvoice invoice) async {
@@ -174,6 +169,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
         }
         final store = widget.store;
         final savedPath = invoice.savedPdfPath;
+        final storedOnline = store.isInvoiceStoredOnline(invoice.id);
+        final canDelete = storedOnline ? store.canWrite : true;
         final theme = Theme.of(context);
         final scheme = theme.colorScheme;
         final actionShape = RoundedRectangleBorder(
@@ -206,7 +203,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                       await _openLastSavedPdf(context, invoice);
                     case _InvoiceOverflowAction.delete:
                       if (context.mounted) {
-                        if (!store.canWrite) {
+                        if (!canDelete) {
                           showInvoiceStoreReadOnlyMessage(context, store);
                           return;
                         }
@@ -254,7 +251,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                     const PopupMenuDivider(),
                     PopupMenuItem(
                       value: _InvoiceOverflowAction.delete,
-                      enabled: store.canWrite,
+                      enabled: canDelete,
                       child: Row(
                         children: [
                           Icon(

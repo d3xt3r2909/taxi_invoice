@@ -49,6 +49,7 @@ final class _InvoiceChatWizardScreenState
   _ChatStep? _returnAfterEdit;
   int? _editingLineIndex;
   _ChatStep? _editingLineField;
+  bool _storeOnline = true;
   bool _saving = false;
   String? _recipientNameError;
   String? _invoiceNumberError;
@@ -299,7 +300,7 @@ final class _InvoiceChatWizardScreenState
   }
 
   Future<void> _save() async {
-    if (!widget.store.canWrite) {
+    if (_storeOnline && !widget.store.canWrite) {
       showInvoiceStoreReadOnlyMessage(context, widget.store);
       return;
     }
@@ -351,6 +352,9 @@ final class _InvoiceChatWizardScreenState
       }),
       orderNamesToRemember: _lines.map((line) => line.brojNarudzbe),
       serviceRecipientToRemember: serviceRecipientToRemember,
+      storageMode: _storeOnline
+          ? InvoiceSaveStorageMode.online
+          : InvoiceSaveStorageMode.localOnly,
     );
     if (!mounted) {
       return;
@@ -388,6 +392,7 @@ final class _InvoiceChatWizardScreenState
       _returnAfterEdit = null;
       _editingLineIndex = null;
       _editingLineField = null;
+      _storeOnline = true;
       _step = _ChatStep.recipient;
     });
   }
@@ -816,7 +821,7 @@ final class _InvoiceChatWizardScreenState
       _ChatStep.orderName => 'Koji je broj narudžbe ili ime?',
       _ChatStep.amount => 'Koji je iznos u KM?',
       _ChatStep.moreLines => 'Želite li dodati još jednu stavku?',
-      _ChatStep.summary => 'Provjerite prije čuvanja',
+      _ChatStep.summary => 'Sačuvati online ili samo offline?',
     };
   }
 
@@ -1196,8 +1201,58 @@ final class _InvoiceChatWizardScreenState
   }
 
   Widget _summaryPanel(BuildContext context) {
+    final theme = Theme.of(context);
     return _answerPanel(
       children: [
+        SegmentedButton<bool>(
+          showSelectedIcon: false,
+          selected: {_storeOnline},
+          segments: const [
+            ButtonSegment<bool>(
+              value: true,
+              icon: Icon(Icons.cloud_done_outlined),
+              label: Text('Online'),
+            ),
+            ButtonSegment<bool>(
+              value: false,
+              icon: Icon(Icons.phone_iphone_outlined),
+              label: Text('Samo offline'),
+            ),
+          ],
+          onSelectionChanged: _saving
+              ? null
+              : (selection) {
+                  if (selection.isNotEmpty) {
+                    setState(() => _storeOnline = selection.first);
+                  }
+                },
+        ),
+        if (!_storeOnline) ...[
+          const SizedBox(height: 10),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.errorContainer.withValues(alpha: 0.52),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: theme.colorScheme.error.withValues(alpha: 0.36),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                'Offline račun nije u zajedničkoj bazi. Ručno sačuvajte ili '
+                'podijelite PDF odmah. Ako se browser obriše ili uređaj '
+                'pokvari, račun se može trajno izgubiti.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: theme.colorScheme.onErrorContainer,
+                  fontWeight: FontWeight.w700,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: _saving ? null : _save,
           icon: _saving
@@ -1206,7 +1261,9 @@ final class _InvoiceChatWizardScreenState
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Icon(Icons.picture_as_pdf_outlined),
-          label: const Text('Sačuvaj PDF'),
+          label: Text(
+            _storeOnline ? 'Sačuvaj online i PDF' : 'Samo otvori PDF',
+          ),
           style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
         ),
         const SizedBox(height: 10),

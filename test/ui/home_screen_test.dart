@@ -95,10 +95,41 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('marks local-only invoice with online save action', (
+    tester,
+  ) async {
+    await initializeDateFormatting('bs_BA');
+    final store = await _loadedStore(
+      invoices: [],
+      localOnlyInvoices: [
+        _invoice(
+          id: 'offline',
+          invoiceNumber: '05/26',
+          recipientName: 'Offline firma',
+          issueDate: DateTime(2026, 5, 5),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          store: store,
+          settings: AppSettingsController(),
+          auth: AppAuthController.notConfigured(),
+        ),
+      ),
+    );
+
+    expect(find.text('Nije online'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Online'), findsOneWidget);
+  });
 }
 
 Future<InvoiceStoreController> _loadedStore({
   required List<StoredInvoice> invoices,
+  List<StoredInvoice> localOnlyInvoices = const [],
 }) async {
   final storage = _MemoryInvoiceStoreTextStorage(
     storeSnapshotToJsonString(
@@ -107,6 +138,9 @@ Future<InvoiceStoreController> _loadedStore({
   );
   final controller = InvoiceStoreController(
     repository: InvoiceStoreRepository(storage: storage),
+    localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(
+      StoreSnapshot.empty().copyWith(invoices: localOnlyInvoices),
+    ),
   );
   await controller.load();
   return controller;
@@ -154,4 +188,16 @@ final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
       syncStatus: InvoiceStoreSyncStatus.online,
     );
   }
+}
+
+final class _MemoryLocalOnlyInvoiceStorage implements LocalOnlyInvoiceStorage {
+  const _MemoryLocalOnlyInvoiceStorage(this.snapshot);
+
+  final StoreSnapshot snapshot;
+
+  @override
+  Future<StoreSnapshot> read() async => snapshot;
+
+  @override
+  Future<void> write(StoreSnapshot snapshot) async {}
 }

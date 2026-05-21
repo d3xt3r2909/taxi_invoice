@@ -2,6 +2,7 @@ import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_repository.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_text_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final class InvoiceStoreMutationException implements Exception {
   const InvoiceStoreMutationException(this.message);
@@ -14,16 +15,23 @@ final class InvoiceStoreMutationException implements Exception {
 
 /// In-memory store + persistence for invoices and suggestion dictionaries.
 final class InvoiceStoreController extends ChangeNotifier {
-  InvoiceStoreController({InvoiceStoreRepository? repository})
-    : _repository = repository ?? InvoiceStoreRepository();
+  InvoiceStoreController({
+    InvoiceStoreRepository? repository,
+    LocalOnlyInvoiceStorage? localOnlyStorage,
+  }) : _repository = repository ?? InvoiceStoreRepository(),
+       _localOnlyStorage =
+           localOnlyStorage ?? const SharedPreferencesLocalOnlyInvoiceStorage();
 
   final InvoiceStoreRepository _repository;
+  final LocalOnlyInvoiceStorage _localOnlyStorage;
 
   StoreSnapshot _snapshot = StoreSnapshot.empty();
+  StoreSnapshot _localOnlySnapshot = StoreSnapshot.empty();
   bool _loaded = false;
   bool _saving = false;
 
   StoreSnapshot get snapshot => _snapshot;
+  StoreSnapshot get localOnlySnapshot => _localOnlySnapshot;
   bool get isLoaded => _loaded;
   bool get isSaving => _saving;
   InvoiceStoreSyncStatus get syncStatus => _repository.syncStatus;
@@ -37,7 +45,11 @@ final class InvoiceStoreController extends ChangeNotifier {
   }
 
   List<StoredInvoice> get invoicesSortedByIssueDate {
-    final list = List<StoredInvoice>.from(_snapshot.invoices);
+    final byId = {
+      for (final invoice in _snapshot.invoices) invoice.id: invoice,
+      for (final invoice in _localOnlySnapshot.invoices) invoice.id: invoice,
+    };
+    final list = byId.values.toList();
     list.sort((a, b) {
       final c = b.issueDate.compareTo(a.issueDate);
       if (c != 0) {
@@ -72,11 +84,49 @@ final class InvoiceStoreController extends ChangeNotifier {
   }
 
   bool hasInvoiceNumber(String invoiceNumber, {String? exceptInvoiceId}) {
+    return _hasInvoiceNumberIn(
+      [..._snapshot.invoices, ..._localOnlySnapshot.invoices],
+      invoiceNumber,
+      exceptInvoiceId: exceptInvoiceId,
+    );
+  }
+
+  bool hasOnlineInvoiceNumber(String invoiceNumber, {String? exceptInvoiceId}) {
+    return _hasInvoiceNumberIn(
+      _snapshot.invoices,
+      invoiceNumber,
+      exceptInvoiceId: exceptInvoiceId,
+    );
+  }
+
+  bool isInvoiceStoredOnline(String id) {
+    return !_localOnlySnapshot.invoices.any((invoice) => invoice.id == id);
+  }
+
+  StoredInvoice? invoiceById(String id) {
+    for (final invoice in _snapshot.invoices) {
+      if (invoice.id == id) {
+        return invoice;
+      }
+    }
+    for (final invoice in _localOnlySnapshot.invoices) {
+      if (invoice.id == id) {
+        return invoice;
+      }
+    }
+    return null;
+  }
+
+  bool _hasInvoiceNumberIn(
+    List<StoredInvoice> invoices,
+    String invoiceNumber, {
+    String? exceptInvoiceId,
+  }) {
     final normalized = invoiceNumber.trim().toLowerCase();
     if (normalized.isEmpty) {
       return false;
     }
-    return _snapshot.invoices.any((invoice) {
+    return invoices.any((invoice) {
       return invoice.id != exceptInvoiceId &&
           invoice.invoiceNumber.trim().toLowerCase() == normalized;
     });
@@ -102,6 +152,7 @@ final class InvoiceStoreController extends ChangeNotifier {
 
   Future<void> load() async {
     _snapshot = await _repository.loadOrCreate();
+    _localOnlySnapshot = await _localOnlyStorage.read();
     if (_snapshot.version < StoreSnapshot.currentVersion) {
       _snapshot = _snapshot.copyWith(version: StoreSnapshot.currentVersion);
       if (_repository.canWrite) {
@@ -116,6 +167,7 @@ final class InvoiceStoreController extends ChangeNotifier {
 
   void reset() {
     _snapshot = StoreSnapshot.empty();
+    _localOnlySnapshot = StoreSnapshot.empty();
     _loaded = false;
     notifyListeners();
   }
@@ -195,7 +247,59 @@ final class InvoiceStoreController extends ChangeNotifier {
     );
   }
 
+  Future<void> upsertLocalOnlyInvoice(StoredInvoice invoice) async {
+    final others = _localOnlySnapshot.invoices
+        .where((e) => e.id != invoice.id)
+        .toList();
+    _localOnlySnapshot = _localOnlySnapshot.copyWith(
+      invoices: [...others, invoice],
+    );
+    await _persistLocalOnly();
+    notifyListeners();
+  }
+
+  Future<void> publishLocalOnlyInvoice(String id) async {
+    StoredInvoice? invoice;
+    for (final candidate in _localOnlySnapshot.invoices) {
+      if (candidate.id == id) {
+        invoice = candidate;
+        break;
+      }
+    }
+    if (invoice == null) {
+      return;
+    }
+    final cities = invoice.lines.expand((line) {
+      return line.putnaRelacija
+          .split(RegExp(r'[-,;/]+'))
+          .map((part) => part.trim())
+          .where((part) => part.isNotEmpty);
+    });
+    final recipientToRemember = _recipientForPublishedInvoice(invoice);
+    await upsertInvoiceWithSuggestions(
+      invoice,
+      cities: cities,
+      orderNames: invoice.lines.map((line) => line.brojNarudzbe),
+      serviceRecipient: recipientToRemember,
+    );
+    _localOnlySnapshot = _localOnlySnapshot.copyWith(
+      invoices: _localOnlySnapshot.invoices
+          .where((candidate) => candidate.id != id)
+          .toList(),
+    );
+    await _persistLocalOnly();
+    notifyListeners();
+  }
+
   Future<void> deleteInvoice(String id) async {
+    if (!isInvoiceStoredOnline(id)) {
+      _localOnlySnapshot = _localOnlySnapshot.copyWith(
+        invoices: _localOnlySnapshot.invoices.where((e) => e.id != id).toList(),
+      );
+      await _persistLocalOnly();
+      notifyListeners();
+      return;
+    }
     await _replaceSnapshot(
       _snapshot.copyWith(
         invoices: _snapshot.invoices.where((e) => e.id != id).toList(),
@@ -297,6 +401,9 @@ final class InvoiceStoreController extends ChangeNotifier {
 
   Future<void> clearAllData() async {
     await _replaceSnapshot(StoreSnapshot.empty());
+    _localOnlySnapshot = StoreSnapshot.empty();
+    await _persistLocalOnly();
+    notifyListeners();
   }
 
   Future<String> exportJsonString() async =>
@@ -309,6 +416,26 @@ final class InvoiceStoreController extends ChangeNotifier {
 
   /// Sprema apsolutnu putanju zadnjeg uspješnog PDF čuvanja za račun.
   Future<void> setInvoiceSavedPdfPath(String invoiceId, String path) async {
+    if (!isInvoiceStoredOnline(invoiceId)) {
+      final idx = _localOnlySnapshot.invoices.indexWhere(
+        (e) => e.id == invoiceId,
+      );
+      if (idx < 0) {
+        return;
+      }
+      final updated = _localOnlySnapshot.invoices[idx].copyWith(
+        savedPdfPath: path,
+      );
+      final others = _localOnlySnapshot.invoices
+          .where((e) => e.id != invoiceId)
+          .toList();
+      _localOnlySnapshot = _localOnlySnapshot.copyWith(
+        invoices: [...others, updated],
+      );
+      await _persistLocalOnly();
+      notifyListeners();
+      return;
+    }
     final list = _snapshot.invoices;
     final idx = list.indexWhere((e) => e.id == invoiceId);
     if (idx < 0) {
@@ -318,8 +445,64 @@ final class InvoiceStoreController extends ChangeNotifier {
     final others = list.where((e) => e.id != invoiceId).toList();
     await _replaceSnapshot(_snapshot.copyWith(invoices: [...others, updated]));
   }
+
+  Future<void> _persistLocalOnly() {
+    return _localOnlyStorage.write(_localOnlySnapshot);
+  }
+
+  ServiceRecipient? _recipientForPublishedInvoice(StoredInvoice invoice) {
+    final name = invoice.recipientName.trim();
+    if (name.isEmpty) {
+      return null;
+    }
+    return matchingServiceRecipient(
+          name: name,
+          address: invoice.recipientAddress,
+          jib: invoice.recipientJib,
+        ) ??
+        ServiceRecipient(
+          id: invoice.recipientId ?? 'recipient-${invoice.id}',
+          name: name,
+          address: invoice.recipientAddress.trim(),
+          jib: invoice.recipientJib.trim(),
+        );
+  }
 }
 
 String _normalizeRecipientField(String value) {
   return value.trim().toLowerCase();
+}
+
+abstract interface class LocalOnlyInvoiceStorage {
+  Future<StoreSnapshot> read();
+
+  Future<void> write(StoreSnapshot snapshot);
+}
+
+final class SharedPreferencesLocalOnlyInvoiceStorage
+    implements LocalOnlyInvoiceStorage {
+  const SharedPreferencesLocalOnlyInvoiceStorage();
+
+  static const _key = 'taxi_invoice_store:local_only_invoices';
+
+  @override
+  Future<StoreSnapshot> read() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw == null || raw.trim().isEmpty) {
+      return StoreSnapshot.empty();
+    }
+    try {
+      return storeSnapshotFromJsonString(raw);
+    } catch (_) {
+      await prefs.remove(_key);
+      return StoreSnapshot.empty();
+    }
+  }
+
+  @override
+  Future<void> write(StoreSnapshot snapshot) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, storeSnapshotToJsonString(snapshot));
+  }
 }

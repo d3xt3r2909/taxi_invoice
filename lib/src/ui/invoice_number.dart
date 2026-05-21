@@ -73,11 +73,18 @@ Future<bool> confirmDuplicateInvoiceNumberIfNeeded({
   required InvoiceStoreController store,
   required String invoiceNumber,
   String? existingInvoiceId,
+  bool onlineOnly = false,
 }) async {
-  if (!store.hasInvoiceNumber(
-    invoiceNumber,
-    exceptInvoiceId: existingInvoiceId,
-  )) {
+  final duplicate = onlineOnly
+      ? store.hasOnlineInvoiceNumber(
+          invoiceNumber,
+          exceptInvoiceId: existingInvoiceId,
+        )
+      : store.hasInvoiceNumber(
+          invoiceNumber,
+          exceptInvoiceId: existingInvoiceId,
+        );
+  if (!duplicate) {
     return true;
   }
   final confirmed = await showDialog<bool>(

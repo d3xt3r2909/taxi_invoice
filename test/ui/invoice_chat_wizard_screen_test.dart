@@ -1,4 +1,5 @@
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
+import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_chat_wizard_screen.dart';
 import 'package:flutter/material.dart';
@@ -87,7 +88,37 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Gotovo'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Provjerite prije čuvanja'), findsOneWidget);
+    expect(find.text('Sačuvati online ili samo offline?'), findsOneWidget);
+  });
+
+  testWidgets('defaults final save choice to online', (tester) async {
+    await tester.pumpInvoiceChatWizard();
+    await tester.completeOneLine();
+    await tester.tap(find.widgetWithText(FilledButton, 'Gotovo'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SegmentedButton<bool> && widget.selected.contains(true),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('warns before saving only offline', (tester) async {
+    await tester.pumpInvoiceChatWizard();
+    await tester.completeOneLine();
+    await tester.tap(find.widgetWithText(FilledButton, 'Gotovo'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Samo offline'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Offline račun nije u zajedničkoj bazi'),
+      findsOneWidget,
+    );
   });
 }
 
@@ -96,7 +127,9 @@ extension on WidgetTester {
     await pumpWidget(
       MaterialApp(
         home: InvoiceChatWizardScreen(
-          store: InvoiceStoreController(),
+          store: InvoiceStoreController(
+            localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+          ),
           settings: AppSettingsController(),
         ),
       ),
@@ -128,5 +161,17 @@ extension on WidgetTester {
     await enterText(find.widgetWithText(TextField, 'Iznos (KM)'), '45');
     await tap(find.widgetWithText(FilledButton, 'Nastavi'));
     await pumpAndSettle();
+  }
+}
+
+final class _MemoryLocalOnlyInvoiceStorage implements LocalOnlyInvoiceStorage {
+  StoreSnapshot snapshot = StoreSnapshot.empty();
+
+  @override
+  Future<StoreSnapshot> read() async => snapshot;
+
+  @override
+  Future<void> write(StoreSnapshot snapshot) async {
+    this.snapshot = snapshot;
   }
 }

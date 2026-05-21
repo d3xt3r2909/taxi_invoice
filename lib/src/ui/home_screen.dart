@@ -10,6 +10,7 @@ import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_detail_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_chat_wizard_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_editor_screen.dart';
+import 'package:app_taxi_invoice/src/ui/invoice_number.dart';
 import 'package:app_taxi_invoice/src/ui/service_recipients_list_screen.dart';
 import 'package:app_taxi_invoice/src/ui/settings_screen.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
@@ -52,6 +53,40 @@ final class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _saveInvoiceOnline(
+    BuildContext context,
+    StoredInvoice invoice,
+  ) async {
+    final store = widget.store;
+    if (!store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, store);
+      return;
+    }
+    final canSaveDuplicate = await confirmDuplicateInvoiceNumberIfNeeded(
+      context: context,
+      store: store,
+      invoiceNumber: invoice.invoiceNumber,
+      existingInvoiceId: invoice.id,
+      onlineOnly: true,
+    );
+    if (!context.mounted || !canSaveDuplicate) {
+      return;
+    }
+    try {
+      await store.publishLocalOnlyInvoice(invoice.id);
+    } catch (e) {
+      if (context.mounted) {
+        showInvoiceStoreMutationError(context, e);
+      }
+      return;
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Račun je sačuvan online.')));
+    }
   }
 
   @override
@@ -160,6 +195,9 @@ final class _HomeScreenState extends State<HomeScreen> {
                           );
                         },
                         onPreviewPdf: () => _previewPdf(context, inv),
+                        storedOnline: store.isInvoiceStoredOnline(inv.id),
+                        canSaveOnline: store.canWrite,
+                        onSaveOnline: () => _saveInvoiceOnline(context, inv),
                       );
                     },
                   ),
@@ -282,11 +320,17 @@ final class _InvoiceListItem extends StatelessWidget {
     required this.invoice,
     required this.onOpen,
     required this.onPreviewPdf,
+    required this.storedOnline,
+    required this.canSaveOnline,
+    required this.onSaveOnline,
   });
 
   final StoredInvoice invoice;
   final VoidCallback onOpen;
   final VoidCallback onPreviewPdf;
+  final bool storedOnline;
+  final bool canSaveOnline;
+  final VoidCallback onSaveOnline;
 
   @override
   Widget build(BuildContext context) {
@@ -306,12 +350,20 @@ final class _InvoiceListItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final actions = _InvoiceListActions(onPreviewPdf: onPreviewPdf);
+              final actions = _InvoiceListActions(
+                onPreviewPdf: onPreviewPdf,
+                storedOnline: storedOnline,
+                canSaveOnline: canSaveOnline,
+                onSaveOnline: onSaveOnline,
+              );
               if (constraints.maxWidth < 420 || textScale > 1.35) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _InvoiceListText(invoice: invoice),
+                    _InvoiceListText(
+                      invoice: invoice,
+                      storedOnline: storedOnline,
+                    ),
                     const SizedBox(height: 12),
                     Align(alignment: Alignment.centerRight, child: actions),
                   ],
@@ -320,7 +372,12 @@ final class _InvoiceListItem extends StatelessWidget {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Expanded(child: _InvoiceListText(invoice: invoice)),
+                  Expanded(
+                    child: _InvoiceListText(
+                      invoice: invoice,
+                      storedOnline: storedOnline,
+                    ),
+                  ),
                   const SizedBox(width: 12),
                   actions,
                 ],
@@ -334,9 +391,10 @@ final class _InvoiceListItem extends StatelessWidget {
 }
 
 final class _InvoiceListText extends StatelessWidget {
-  const _InvoiceListText({required this.invoice});
+  const _InvoiceListText({required this.invoice, required this.storedOnline});
 
   final StoredInvoice invoice;
+  final bool storedOnline;
 
   @override
   Widget build(BuildContext context) {
@@ -349,6 +407,10 @@ final class _InvoiceListText extends StatelessWidget {
             context,
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
+        if (!storedOnline) ...[
+          const SizedBox(height: 8),
+          const _OfflineInvoiceBadge(),
+        ],
         const SizedBox(height: 8),
         Text(
           'Izdavanje: ${formatInvoiceDateMedium(invoice.issueDate)} '
@@ -360,10 +422,55 @@ final class _InvoiceListText extends StatelessWidget {
   }
 }
 
+final class _OfflineInvoiceBadge extends StatelessWidget {
+  const _OfflineInvoiceBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.errorContainer.withValues(alpha: 0.54),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.error.withValues(alpha: 0.38)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 16,
+              color: scheme.onErrorContainer,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Nije online',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: scheme.onErrorContainer,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 final class _InvoiceListActions extends StatelessWidget {
-  const _InvoiceListActions({required this.onPreviewPdf});
+  const _InvoiceListActions({
+    required this.onPreviewPdf,
+    required this.storedOnline,
+    required this.canSaveOnline,
+    required this.onSaveOnline,
+  });
 
   final VoidCallback onPreviewPdf;
+  final bool storedOnline;
+  final bool canSaveOnline;
+  final VoidCallback onSaveOnline;
 
   @override
   Widget build(BuildContext context) {
@@ -371,6 +478,19 @@ final class _InvoiceListActions extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (!storedOnline) ...[
+          OutlinedButton.icon(
+            onPressed: canSaveOnline ? onSaveOnline : null,
+            icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+            label: const Text('Online'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+          ),
+          const SizedBox(width: 6),
+        ],
         FilledButton.tonalIcon(
           onPressed: onPreviewPdf,
           icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
@@ -400,18 +520,15 @@ final class _InvoiceCreateActions extends StatelessWidget {
   final VoidCallback onInvoiceCreated;
 
   Future<void> _openAssistant(BuildContext context) async {
-    if (!store.canWrite) {
-      showInvoiceStoreReadOnlyMessage(context, store);
-      return;
-    }
-    final invoiceCount = store.snapshot.invoices.length;
+    final invoiceCount = store.invoicesSortedByIssueDate.length;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) =>
             InvoiceChatWizardScreen(store: store, settings: settings),
       ),
     );
-    if (context.mounted && store.snapshot.invoices.length > invoiceCount) {
+    if (context.mounted &&
+        store.invoicesSortedByIssueDate.length > invoiceCount) {
       onInvoiceCreated();
     }
   }
@@ -421,13 +538,14 @@ final class _InvoiceCreateActions extends StatelessWidget {
       showInvoiceStoreReadOnlyMessage(context, store);
       return;
     }
-    final invoiceCount = store.snapshot.invoices.length;
+    final invoiceCount = store.invoicesSortedByIssueDate.length;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => InvoiceEditorScreen(store: store, settings: settings),
       ),
     );
-    if (context.mounted && store.snapshot.invoices.length > invoiceCount) {
+    if (context.mounted &&
+        store.invoicesSortedByIssueDate.length > invoiceCount) {
       onInvoiceCreated();
     }
   }

@@ -14,6 +14,7 @@ void main() {
     );
     final controller = InvoiceStoreController(
       repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
     );
     await controller.load();
 
@@ -30,6 +31,7 @@ void main() {
     );
     final controller = InvoiceStoreController(
       repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
     );
     await controller.load();
 
@@ -48,6 +50,7 @@ void main() {
     );
     final controller = InvoiceStoreController(
       repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
     );
     await controller.load();
 
@@ -65,6 +68,7 @@ void main() {
     );
     final controller = InvoiceStoreController(
       repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
     );
     await controller.load();
     await controller.upsertServiceRecipient(_recipient());
@@ -86,6 +90,7 @@ void main() {
     );
     final controller = InvoiceStoreController(
       repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
     );
     await controller.load();
 
@@ -103,6 +108,7 @@ void main() {
     );
     final controller = InvoiceStoreController(
       repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
     );
     await controller.load();
 
@@ -117,6 +123,7 @@ void main() {
     );
     final controller = InvoiceStoreController(
       repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
     );
     await controller.load();
 
@@ -141,12 +148,46 @@ void main() {
     );
     final controller = InvoiceStoreController(
       repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
     );
     await controller.load();
 
     await controller.clearAllData();
 
     expect(controller.snapshot.toJson(), StoreSnapshot.empty().toJson());
+  });
+
+  test('local-only invoice is listed as not stored online', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(StoreSnapshot.empty()),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(
+        StoreSnapshot.empty().copyWith(invoices: [_invoice()]),
+      ),
+    );
+    await controller.load();
+
+    expect(controller.isInvoiceStoredOnline('invoice-1'), isFalse);
+  });
+
+  test('publishing local-only invoice moves it into online snapshot', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(StoreSnapshot.empty()),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(
+        StoreSnapshot.empty().copyWith(invoices: [_invoice()]),
+      ),
+    );
+    await controller.load();
+
+    await controller.publishLocalOnlyInvoice('invoice-1');
+
+    expect(controller.snapshot.invoices.single.id, 'invoice-1');
+    expect(controller.localOnlySnapshot.invoices, isEmpty);
   });
 }
 
@@ -206,5 +247,20 @@ final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
     await writeGate?.future;
     this.text = text;
     return InvoiceStoreTextWrite(syncStatus: syncStatus);
+  }
+}
+
+final class _MemoryLocalOnlyInvoiceStorage implements LocalOnlyInvoiceStorage {
+  _MemoryLocalOnlyInvoiceStorage([StoreSnapshot? snapshot])
+    : snapshot = snapshot ?? StoreSnapshot.empty();
+
+  StoreSnapshot snapshot;
+
+  @override
+  Future<StoreSnapshot> read() async => snapshot;
+
+  @override
+  Future<void> write(StoreSnapshot snapshot) async {
+    this.snapshot = snapshot;
   }
 }

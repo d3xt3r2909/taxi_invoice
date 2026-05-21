@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 
 enum InvoiceSavePostAction { backToList, newInvoice }
 
+enum InvoiceSaveStorageMode { online, localOnly }
+
 Future<InvoiceSavePostAction?> saveInvoiceAndOpenPdfPreview({
   required BuildContext context,
   required StoredInvoice invoice,
@@ -21,8 +23,10 @@ Future<InvoiceSavePostAction?> saveInvoiceAndOpenPdfPreview({
   Iterable<String> citiesToRemember = const [],
   Iterable<String> orderNamesToRemember = const [],
   ServiceRecipient? serviceRecipientToRemember,
+  InvoiceSaveStorageMode storageMode = InvoiceSaveStorageMode.online,
 }) async {
-  if (!store.canWrite) {
+  final saveOnline = storageMode == InvoiceSaveStorageMode.online;
+  if (saveOnline && !store.canWrite) {
     showInvoiceStoreReadOnlyMessage(context, store);
     return null;
   }
@@ -36,12 +40,16 @@ Future<InvoiceSavePostAction?> saveInvoiceAndOpenPdfPreview({
     return null;
   }
   try {
-    await store.upsertInvoiceWithSuggestions(
-      invoice,
-      cities: citiesToRemember,
-      orderNames: orderNamesToRemember,
-      serviceRecipient: serviceRecipientToRemember,
-    );
+    if (saveOnline) {
+      await store.upsertInvoiceWithSuggestions(
+        invoice,
+        cities: citiesToRemember,
+        orderNames: orderNamesToRemember,
+        serviceRecipient: serviceRecipientToRemember,
+      );
+    } else {
+      await store.upsertLocalOnlyInvoice(invoice);
+    }
   } catch (e) {
     if (context.mounted) {
       showInvoiceStoreMutationError(context, e);
@@ -100,6 +108,7 @@ Future<InvoiceSavePostAction?> saveInvoiceAndOpenPdfPreview({
         invoice: previewInvoice,
         pdfBytes: bytes,
         savedPdfPath: savedPath,
+        storageMode: storageMode,
       ),
     ),
   );
@@ -111,19 +120,24 @@ final class InvoiceSavedScreen extends StatelessWidget {
     required this.invoice,
     required this.pdfBytes,
     required this.savedPdfPath,
+    required this.storageMode,
     super.key,
   });
 
   final StoredInvoice invoice;
   final Uint8List pdfBytes;
   final String? savedPdfPath;
+  final InvoiceSaveStorageMode storageMode;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final savedOnline = storageMode == InvoiceSaveStorageMode.online;
     return Scaffold(
-      appBar: AppBar(title: const Text('Račun sačuvan')),
+      appBar: AppBar(
+        title: Text(savedOnline ? 'Račun sačuvan' : 'Samo offline'),
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
@@ -135,7 +149,9 @@ final class InvoiceSavedScreen extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Text(
-              'Račun je sačuvan',
+              savedOnline
+                  ? 'Račun je sačuvan online'
+                  : 'Račun je samo na ovom uređaju',
               textAlign: TextAlign.center,
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
@@ -156,6 +172,20 @@ final class InvoiceSavedScreen extends StatelessWidget {
                 'PDF je snimljen u odabrani folder.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyLarge?.copyWith(height: 1.4),
+              ),
+            ],
+            if (!savedOnline) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Nije u zajedničkoj online bazi. Ručno sačuvajte ili podijelite '
+                'PDF, jer se offline podaci mogu izgubiti ako se obriše browser '
+                'ili uređaj prestane raditi.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  height: 1.4,
+                  color: scheme.error,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
             const SizedBox(height: 28),
