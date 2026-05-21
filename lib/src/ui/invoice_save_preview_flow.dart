@@ -15,6 +15,7 @@ Future<bool> saveInvoiceAndOpenPdfPreview({
   required AppSettingsController settings,
   Iterable<String> citiesToRemember = const [],
   Iterable<String> orderNamesToRemember = const [],
+  ServiceRecipient? serviceRecipientToRemember,
 }) async {
   if (!store.canWrite) {
     showInvoiceStoreReadOnlyMessage(context, store);
@@ -25,6 +26,7 @@ Future<bool> saveInvoiceAndOpenPdfPreview({
       invoice,
       cities: citiesToRemember,
       orderNames: orderNamesToRemember,
+      serviceRecipient: serviceRecipientToRemember,
     );
   } catch (e) {
     if (context.mounted) {

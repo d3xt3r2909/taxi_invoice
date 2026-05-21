@@ -240,13 +240,14 @@ final class _InvoiceChatWizardScreenState
       return;
     }
     setState(() => _saving = true);
+    final serviceRecipientToRemember = _manualServiceRecipientToRemember();
     final invoice = StoredInvoice(
       id: _uuid.v4(),
       invoiceNumber: _invoiceNumber.text.trim(),
       issueDate: _issueDate,
       createdAt: DateTime.now(),
       lines: _lines,
-      recipientId: _selectedRecipient?.id,
+      recipientId: _selectedRecipient?.id ?? serviceRecipientToRemember?.id,
       recipientName: _recipientName,
       recipientAddress: _recipientAddress,
       recipientJib: _recipientJib,
@@ -260,6 +261,7 @@ final class _InvoiceChatWizardScreenState
         return parseInvoiceRoute(line.putnaRelacija);
       }),
       orderNamesToRemember: _lines.map((line) => line.brojNarudzbe),
+      serviceRecipientToRemember: serviceRecipientToRemember,
     );
     if (!mounted) {
       return;
@@ -268,6 +270,29 @@ final class _InvoiceChatWizardScreenState
     if (saved && mounted) {
       Navigator.of(context).pop();
     }
+  }
+
+  ServiceRecipient? _manualServiceRecipientToRemember() {
+    if (!_manualRecipient || _selectedRecipient != null) {
+      return null;
+    }
+    final name = _manualRecipientName.text.trim();
+    if (name.isEmpty) {
+      return null;
+    }
+    final address = _manualRecipientAddress.text.trim();
+    final jib = _manualRecipientJib.text.trim();
+    return widget.store.matchingServiceRecipient(
+          name: name,
+          address: address,
+          jib: jib,
+        ) ??
+        ServiceRecipient(
+          id: _uuid.v4(),
+          name: name,
+          address: address,
+          jib: jib,
+        );
   }
 
   void _goBack() {

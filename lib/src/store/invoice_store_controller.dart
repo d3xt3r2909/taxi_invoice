@@ -69,6 +69,24 @@ final class InvoiceStoreController extends ChangeNotifier {
     return null;
   }
 
+  ServiceRecipient? matchingServiceRecipient({
+    required String name,
+    String address = '',
+    String jib = '',
+  }) {
+    final normalizedName = _normalizeRecipientField(name);
+    final normalizedAddress = _normalizeRecipientField(address);
+    final normalizedJib = _normalizeRecipientField(jib);
+    for (final recipient in _snapshot.serviceRecipients) {
+      if (_normalizeRecipientField(recipient.name) == normalizedName &&
+          _normalizeRecipientField(recipient.address) == normalizedAddress &&
+          _normalizeRecipientField(recipient.jib) == normalizedJib) {
+        return recipient;
+      }
+    }
+    return null;
+  }
+
   Future<void> load() async {
     _snapshot = await _repository.loadOrCreate();
     if (_snapshot.version < StoreSnapshot.currentVersion) {
@@ -124,6 +142,7 @@ final class InvoiceStoreController extends ChangeNotifier {
     StoredInvoice invoice, {
     Iterable<String> cities = const [],
     Iterable<String> orderNames = const [],
+    ServiceRecipient? serviceRecipient,
   }) async {
     final citySet = {..._snapshot.cities};
     for (final city in cities) {
@@ -142,12 +161,20 @@ final class InvoiceStoreController extends ChangeNotifier {
       }
     }
     final others = _snapshot.invoices.where((e) => e.id != invoice.id).toList();
+    final serviceRecipients = serviceRecipient == null
+        ? _snapshot.serviceRecipients
+        : [
+            ..._snapshot.serviceRecipients.where(
+              (e) => e.id != serviceRecipient.id,
+            ),
+            serviceRecipient,
+          ];
     await _replaceSnapshot(
       StoreSnapshot(
         version: _snapshot.version,
         cities: citySet.toList(),
         orderNames: nameSet.toList(),
-        serviceRecipients: _snapshot.serviceRecipients,
+        serviceRecipients: serviceRecipients,
         invoices: [...others, invoice],
       ),
     );
@@ -272,4 +299,8 @@ final class InvoiceStoreController extends ChangeNotifier {
     final others = list.where((e) => e.id != invoiceId).toList();
     await _replaceSnapshot(_snapshot.copyWith(invoices: [...others, updated]));
   }
+}
+
+String _normalizeRecipientField(String value) {
+  return value.trim().toLowerCase();
 }

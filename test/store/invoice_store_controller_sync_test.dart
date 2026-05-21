@@ -39,14 +39,54 @@ void main() {
 
     expect(controller.snapshot.invoices, isEmpty);
   });
+
+  test('invoice save can remember a service recipient', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(StoreSnapshot.empty()),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+    );
+    await controller.load();
+
+    await controller.upsertInvoiceWithSuggestions(
+      _invoice(recipientId: 'recipient-1'),
+      serviceRecipient: _recipient(),
+    );
+
+    expect(controller.recipientById('recipient-1')?.name, 'Firma d.o.o.');
+  });
+
+  test('matching service recipient ignores case and whitespace', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(StoreSnapshot.empty()),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+    );
+    await controller.load();
+    await controller.upsertServiceRecipient(_recipient());
+
+    final match = controller.matchingServiceRecipient(
+      name: ' firma d.o.o. ',
+      address: ' adresa 1 ',
+      jib: ' 123 ',
+    );
+
+    expect(match?.id, 'recipient-1');
+  });
 }
 
-StoredInvoice _invoice() {
+StoredInvoice _invoice({String? recipientId}) {
   return StoredInvoice(
     id: 'invoice-1',
     invoiceNumber: '1/26',
     issueDate: DateTime(2026, 1, 1),
     createdAt: DateTime(2026, 1, 1),
+    recipientId: recipientId,
+    recipientName: recipientId == null ? '' : 'Firma d.o.o.',
+    recipientAddress: recipientId == null ? '' : 'Adresa 1',
+    recipientJib: recipientId == null ? '' : '123',
     lines: [
       InvoiceLine(
         datumRacuna: DateTime(2026, 1, 1),
@@ -55,6 +95,15 @@ StoredInvoice _invoice() {
         iznosKm: 10,
       ),
     ],
+  );
+}
+
+ServiceRecipient _recipient() {
+  return const ServiceRecipient(
+    id: 'recipient-1',
+    name: 'Firma d.o.o.',
+    address: 'Adresa 1',
+    jib: '123',
   );
 }
 
