@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:convert';
 
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
@@ -43,18 +43,10 @@ Future<void> showImportExportSheet(
               ),
               leading: const Icon(Icons.merge_type),
               onTap: () async {
-                final result = await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['json'],
-                );
-                if (result == null || result.files.isEmpty) {
+                final raw = await _pickJsonString();
+                if (raw == null) {
                   return;
                 }
-                final path = result.files.single.path;
-                if (path == null) {
-                  return;
-                }
-                final raw = await File(path).readAsString();
                 final snap = storeSnapshotFromJsonString(raw);
                 await store.importMerge(snap);
                 if (ctx.mounted) {
@@ -89,18 +81,10 @@ Future<void> showImportExportSheet(
                 if (ok != true) {
                   return;
                 }
-                final result = await FilePicker.platform.pickFiles(
-                  type: FileType.custom,
-                  allowedExtensions: ['json'],
-                );
-                if (result == null || result.files.isEmpty) {
+                final raw = await _pickJsonString();
+                if (raw == null) {
                   return;
                 }
-                final path = result.files.single.path;
-                if (path == null) {
-                  return;
-                }
-                final raw = await File(path).readAsString();
                 await store.importRawReplace(raw);
                 if (ctx.mounted) {
                   Navigator.of(ctx).pop();
@@ -115,4 +99,20 @@ Future<void> showImportExportSheet(
       );
     },
   );
+}
+
+Future<String?> _pickJsonString() async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['json'],
+    withData: true,
+  );
+  if (result == null || result.files.isEmpty) {
+    return null;
+  }
+  final bytes = result.files.single.bytes;
+  if (bytes == null) {
+    return null;
+  }
+  return utf8.decode(bytes);
 }
