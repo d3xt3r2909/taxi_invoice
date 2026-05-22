@@ -16,6 +16,8 @@ import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_drawing_board/flutter_drawing_board.dart';
+import 'package:flutter_drawing_board/paint_contents.dart';
 import 'package:image/image.dart' as img;
 import 'package:uuid/uuid.dart';
 
@@ -27,6 +29,8 @@ const _maxRawNoteImageBytes = 20 * 1024 * 1024;
 const _maxPreparedNoteImageBytes = 900 * 1024;
 const _noteImageMaxEdge = 1400;
 const _noteImageWideBreakpoint = 820.0;
+const _noteDrawColorValue = 0xCCFFB300;
+const _noteDrawStrokeWidth = 9.0;
 
 final class InvoiceChatWizardScreen extends StatefulWidget {
   const InvoiceChatWizardScreen({
@@ -82,6 +86,8 @@ final class _InvoiceChatWizardScreenState
   String _noteImageName = '';
   int _noteImageRotationTurns = 0;
   Uint8List? _noteImageBytes;
+  Size? _noteImageNaturalSize;
+  List<Map<String, dynamic>> _noteImageDrawingJson = const [];
   String? _recipientNameError;
   String? _invoiceNumberError;
   String? _routeError;
@@ -280,6 +286,8 @@ final class _InvoiceChatWizardScreenState
     if (inlineBytes != null) {
       _noteImageBase64 = draft.noteImageBase64;
       _noteImageBytes = inlineBytes;
+      _noteImageNaturalSize = _decodeImageNaturalSize(inlineBytes);
+      _noteImageDrawingJson = const [];
       unawaited(_migrateInlineNoteImageToLocalStorage(draft));
       return;
     }
@@ -297,6 +305,8 @@ final class _InvoiceChatWizardScreenState
     _noteImageName = '';
     _noteImageRotationTurns = 0;
     _noteImageBytes = null;
+    _noteImageNaturalSize = null;
+    _noteImageDrawingJson = const [];
   }
 
   Future<void> _loadNoteImageFromLocalStorage(String imageId) async {
@@ -313,6 +323,11 @@ final class _InvoiceChatWizardScreenState
       _noteImageMimeType = image.mimeType;
       _noteImageName = image.name;
       _noteImageBytes = bytes;
+      final imageSize = _decodeImageNaturalSize(bytes);
+      _noteImageNaturalSize = imageSize;
+      _noteImageDrawingJson = image.drawingJson.isNotEmpty
+          ? image.drawingJson
+          : _drawingJsonFromLegacyStrokes(image.strokes, imageSize);
     });
   }
 
@@ -326,6 +341,7 @@ final class _InvoiceChatWizardScreenState
         base64: draft.noteImageBase64,
         mimeType: draft.noteImageMimeType,
         name: draft.noteImageName,
+        drawingJson: const [],
       ),
     );
     if (!mounted) {
@@ -378,6 +394,7 @@ final class _InvoiceChatWizardScreenState
         base64: imageBase64,
         mimeType: prepared.mimeType,
         name: prepared.name,
+        drawingJson: const [],
       ),
     );
     if (!mounted) {
@@ -391,6 +408,8 @@ final class _InvoiceChatWizardScreenState
       _noteImageName = prepared.name;
       _noteImageRotationTurns = 0;
       _noteImageBytes = prepared.bytes;
+      _noteImageNaturalSize = _decodeImageNaturalSize(prepared.bytes);
+      _noteImageDrawingJson = const [];
     });
     if (previousImageId.isNotEmpty && previousImageId != imageId) {
       unawaited(widget.noteImageStorage.delete(previousImageId));
@@ -467,30 +486,41 @@ final class _InvoiceChatWizardScreenState
     await showDialog<void>(
       context: context,
       builder: (context) {
-        return Dialog.fullscreen(
-          child: Scaffold(
-            appBar: AppBar(
-              title: Text(_noteImageName.isEmpty ? 'Bilješka' : _noteImageName),
-              actions: [
-                IconButton(
-                  tooltip: 'Rotiraj',
-                  onPressed: () {
-                    _rotateNoteImage();
-                    Navigator.of(context).pop();
-                    unawaited(_openNoteImagePreview());
-                  },
-                  icon: const Icon(Icons.rotate_right_rounded),
-                ),
-              ],
-            ),
-            body: _NoteImageViewer(
-              bytes: bytes,
-              rotationTurns: _noteImageRotationTurns,
-            ),
-          ),
+        return _NoteImageMarkupDialog(
+          bytes: bytes,
+          name: _noteImageName,
+          rotationTurns: _noteImageRotationTurns,
+          imageSize: _noteImageNaturalSize,
+          drawingJson: _noteImageDrawingJson,
+          onRotate: _rotateNoteImage,
+          onDrawingChanged: _saveNoteImageDrawing,
         );
       },
     );
+  }
+
+  Future<void> _saveNoteImageDrawing(
+    List<Map<String, dynamic>> drawingJson,
+  ) async {
+    final imageId = _noteImageId;
+    if (imageId.isEmpty || _noteImageBase64.isEmpty) {
+      return;
+    }
+    await widget.noteImageStorage.write(
+      InvoiceChatNoteImage(
+        id: imageId,
+        base64: _noteImageBase64,
+        mimeType: _noteImageMimeType,
+        name: _noteImageName,
+        drawingJson: drawingJson,
+      ),
+    );
+    if (!mounted || imageId != _noteImageId) {
+      return;
+    }
+    setState(() {
+      _noteImageDrawingJson = _immutableDrawingJson(drawingJson);
+    });
   }
 
   void _rotateNoteImage() {
@@ -1028,13 +1058,17 @@ final class _InvoiceChatWizardScreenState
               children: [
                 SizedBox(
                   width: panelWidth,
+                  height: constraints.maxHeight,
                   child: _NoteImagePanel(
                     bytes: noteImageBytes,
                     name: _noteImageName,
                     rotationTurns: _noteImageRotationTurns,
+                    imageSize: _noteImageNaturalSize,
+                    drawingJson: _noteImageDrawingJson,
                     onPreview: _openNoteImagePreview,
                     onReplace: _pickNoteImage,
                     onRotate: _rotateNoteImage,
+                    onDrawingChanged: _saveNoteImageDrawing,
                     onRemove: _removeNoteImage,
                   ),
                 ),
@@ -1062,6 +1096,8 @@ final class _InvoiceChatWizardScreenState
                   child: _NoteImageThumbnail(
                     bytes: noteImageBytes,
                     rotationTurns: _noteImageRotationTurns,
+                    imageSize: _noteImageNaturalSize,
+                    drawingJson: _noteImageDrawingJson,
                     onTap: _openNoteImagePreview,
                   ),
                 ),
@@ -1984,6 +2020,156 @@ String _jpgImageName(String name) {
   return '$baseName.jpg';
 }
 
+Size? _decodeImageNaturalSize(Uint8List bytes) {
+  try {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      return null;
+    }
+    return Size(decoded.width.toDouble(), decoded.height.toDouble());
+  } catch (_) {
+    return null;
+  }
+}
+
+Size _noteImageViewerSizeForConstraints(
+  BuildContext context,
+  BoxConstraints constraints,
+) {
+  final fallbackSize = MediaQuery.sizeOf(context);
+  final width = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+      ? constraints.maxWidth
+      : fallbackSize.width;
+  final height = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+      ? constraints.maxHeight
+      : fallbackSize.height;
+  return Size(
+    width.isFinite && width > 0 ? width : 1,
+    height.isFinite && height > 0 ? height : 1,
+  );
+}
+
+List<Map<String, dynamic>> _immutableDrawingJson(
+  List<Map<String, dynamic>> drawingJson,
+) {
+  return List.unmodifiable(drawingJson.map(_copyDrawingJsonEntry));
+}
+
+Map<String, dynamic> _copyDrawingJsonEntry(Map<String, dynamic> entry) {
+  return jsonDecode(jsonEncode(entry)) as Map<String, dynamic>;
+}
+
+DrawingController _createNoteDrawingController({
+  required List<Map<String, dynamic>> drawingJson,
+  required int rotationTurns,
+}) {
+  final controller = DrawingController(
+    config: DrawConfig.def(
+      contentType: SimpleLine,
+      angle: rotationTurns,
+      color: const Color(_noteDrawColorValue),
+      strokeWidth: _noteDrawStrokeWidth,
+      isAntiAlias: true,
+    ),
+    content: SimpleLine(minPointDistance: 3),
+    maxHistorySteps: 200,
+  );
+  controller.setStyle(
+    color: const Color(_noteDrawColorValue),
+    strokeWidth: _noteDrawStrokeWidth,
+    strokeCap: StrokeCap.round,
+    strokeJoin: StrokeJoin.round,
+    isAntiAlias: true,
+  );
+  controller.setPaintContent(SimpleLine(minPointDistance: 3));
+  final contents = drawingJson
+      .map(_paintContentFromJson)
+      .whereType<PaintContent>()
+      .toList();
+  if (contents.isNotEmpty) {
+    controller.addContents(contents);
+  }
+  return controller;
+}
+
+PaintContent? _paintContentFromJson(Map<String, dynamic> json) {
+  try {
+    return switch (json['type']) {
+      'SimpleLine' => SimpleLine.fromJson(json),
+      'Eraser' => Eraser.fromJson(json),
+      _ => null,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+List<Map<String, dynamic>> _drawingJsonFromLegacyStrokes(
+  List<InvoiceChatNoteStroke> strokes,
+  Size? imageSize,
+) {
+  final size = imageSize ?? const Size(1000, 1000);
+  return strokes
+      .map((stroke) {
+        final points = stroke.points
+            .map((point) => Offset(point.x * size.width, point.y * size.height))
+            .toList();
+        if (points.isEmpty) {
+          return null;
+        }
+        return SimpleLine.data(
+          minPointDistance: 2,
+          useBezierCurve: true,
+          points: points,
+          paint: Paint()
+            ..color = Color(stroke.colorValue)
+            ..strokeWidth = stroke.width
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round
+            ..style = PaintingStyle.stroke
+            ..isAntiAlias = true,
+        ).toJson();
+      })
+      .whereType<Map<String, dynamic>>()
+      .toList();
+}
+
+Size _noteImageBoardSize(Size? imageSize) {
+  final size = imageSize ?? const Size(1000, 1000);
+  return Size(
+    size.width.isFinite && size.width > 0 ? size.width : 1000,
+    size.height.isFinite && size.height > 0 ? size.height : 1000,
+  );
+}
+
+Size _noteImageRotatedBoardSize(Size boardSize, int rotationTurns) {
+  if (rotationTurns.isOdd) {
+    final maxSide = boardSize.longestSide;
+    return Size.square(maxSide);
+  }
+  return boardSize;
+}
+
+Matrix4 _noteImageFitMatrix({
+  required Size viewportSize,
+  required Size boardSize,
+  required int rotationTurns,
+}) {
+  final visualSize = _noteImageRotatedBoardSize(boardSize, rotationTurns);
+  final scale = math
+      .min(
+        viewportSize.width / visualSize.width,
+        viewportSize.height / visualSize.height,
+      )
+      .clamp(0.05, 8.0)
+      .toDouble();
+  final dx = (viewportSize.width - visualSize.width * scale) / 2;
+  final dy = (viewportSize.height - visualSize.height * scale) / 2;
+  return Matrix4.identity()
+    ..translateByDouble(dx, dy, 0, 1)
+    ..scaleByDouble(scale, scale, 1, 1);
+}
+
 final class _PanelColumn extends StatelessWidget {
   const _PanelColumn({required this.children});
 
@@ -2244,29 +2430,199 @@ final class _NoteImagePrompt extends StatelessWidget {
   }
 }
 
-final class _NoteImagePanel extends StatelessWidget {
+typedef _NoteDrawingChanged =
+    Future<void> Function(List<Map<String, dynamic>> drawingJson);
+
+final class _NoteImageMarkupDialog extends StatefulWidget {
+  const _NoteImageMarkupDialog({
+    required this.bytes,
+    required this.name,
+    required this.rotationTurns,
+    required this.imageSize,
+    required this.drawingJson,
+    required this.onRotate,
+    required this.onDrawingChanged,
+  });
+
+  final Uint8List bytes;
+  final String name;
+  final int rotationTurns;
+  final Size? imageSize;
+  final List<Map<String, dynamic>> drawingJson;
+  final VoidCallback onRotate;
+  final _NoteDrawingChanged onDrawingChanged;
+
+  @override
+  State<_NoteImageMarkupDialog> createState() => _NoteImageMarkupDialogState();
+}
+
+final class _NoteImageMarkupDialogState extends State<_NoteImageMarkupDialog> {
+  late int _rotationTurns;
+  late DrawingController _drawingController;
+  bool _drawEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _rotationTurns = widget.rotationTurns;
+    _drawingController = _createNoteDrawingController(
+      drawingJson: widget.drawingJson,
+      rotationTurns: widget.rotationTurns,
+    )..addListener(_handleDrawingChanged);
+  }
+
+  @override
+  void dispose() {
+    _drawingController
+      ..removeListener(_handleDrawingChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog.fullscreen(
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.name.isEmpty ? 'Bilješka' : widget.name),
+          actions: [
+            IconButton(
+              tooltip: _drawEnabled ? 'Isključi crtanje' : 'Crtaj',
+              onPressed: () => setState(() => _drawEnabled = !_drawEnabled),
+              icon: Icon(
+                _drawEnabled ? Icons.edit_off_rounded : Icons.edit_rounded,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Poništi zadnje',
+              onPressed: _drawingController.canUndo()
+                  ? _drawingController.undo
+                  : null,
+              icon: const Icon(Icons.undo_rounded),
+            ),
+            IconButton(
+              tooltip: 'Vrati poništeno',
+              onPressed: _drawingController.canRedo()
+                  ? _drawingController.redo
+                  : null,
+              icon: const Icon(Icons.redo_rounded),
+            ),
+            IconButton(
+              tooltip: 'Obriši oznake',
+              onPressed: _drawingController.canClear()
+                  ? _drawingController.clear
+                  : null,
+              icon: const Icon(Icons.layers_clear_rounded),
+            ),
+            IconButton(
+              tooltip: 'Rotiraj',
+              onPressed: _rotate,
+              icon: const Icon(Icons.rotate_right_rounded),
+            ),
+          ],
+        ),
+        body: _NoteImageDrawingBoard(
+          bytes: widget.bytes,
+          imageSize: widget.imageSize,
+          rotationTurns: _rotationTurns,
+          drawEnabled: _drawEnabled,
+          controller: _drawingController,
+        ),
+      ),
+    );
+  }
+
+  void _rotate() {
+    setState(() {
+      _rotationTurns = (_rotationTurns + 1) % 4;
+      _drawingController.turn();
+    });
+    widget.onRotate();
+  }
+
+  void _handleDrawingChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    unawaited(widget.onDrawingChanged(_drawingController.getJsonList()));
+  }
+}
+
+final class _NoteImagePanel extends StatefulWidget {
   const _NoteImagePanel({
     required this.bytes,
     required this.name,
     required this.rotationTurns,
+    required this.imageSize,
+    required this.drawingJson,
     required this.onPreview,
     required this.onReplace,
     required this.onRotate,
+    required this.onDrawingChanged,
     required this.onRemove,
   });
 
   final Uint8List bytes;
   final String name;
   final int rotationTurns;
+  final Size? imageSize;
+  final List<Map<String, dynamic>> drawingJson;
   final VoidCallback onPreview;
   final VoidCallback onReplace;
   final VoidCallback onRotate;
+  final _NoteDrawingChanged onDrawingChanged;
   final VoidCallback onRemove;
+
+  @override
+  State<_NoteImagePanel> createState() => _NoteImagePanelState();
+}
+
+final class _NoteImagePanelState extends State<_NoteImagePanel> {
+  late DrawingController _drawingController;
+  bool _drawEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _drawingController = _createNoteDrawingController(
+      drawingJson: widget.drawingJson,
+      rotationTurns: widget.rotationTurns,
+    )..addListener(_handleDrawingChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _NoteImagePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bytes != widget.bytes) {
+      _replaceDrawingController();
+      return;
+    }
+    if (oldWidget.rotationTurns != widget.rotationTurns) {
+      _syncDrawingRotation();
+    }
+  }
+
+  @override
+  void dispose() {
+    _drawingController
+      ..removeListener(_handleDrawingChanged)
+      ..dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final viewer = _NoteImageDrawingBoard(
+      key: const ValueKey('note-image-panel-viewer'),
+      bytes: widget.bytes,
+      imageSize: widget.imageSize,
+      rotationTurns: widget.rotationTurns,
+      drawEnabled: _drawEnabled,
+      controller: _drawingController,
+    );
     return DecoratedBox(
       decoration: BoxDecoration(color: scheme.surfaceContainerLowest),
       child: Column(
@@ -2280,7 +2636,7 @@ final class _NoteImagePanel extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    name.isEmpty ? 'Slika bilješke' : name,
+                    widget.name.isEmpty ? 'Slika bilješke' : widget.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleMedium?.copyWith(
@@ -2290,20 +2646,76 @@ final class _NoteImagePanel extends StatelessWidget {
                 ),
                 IconButton(
                   tooltip: 'Zamijeni sliku',
-                  onPressed: onReplace,
+                  onPressed: widget.onReplace,
                   icon: const Icon(Icons.add_photo_alternate_outlined),
                 ),
                 IconButton(
-                  tooltip: 'Rotiraj',
-                  onPressed: onRotate,
-                  icon: const Icon(Icons.rotate_right_rounded),
-                ),
-                IconButton(
                   tooltip: 'Ukloni sliku',
-                  onPressed: onRemove,
+                  onPressed: widget.onRemove,
                   icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
                 ),
               ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: SizedBox(
+              height: 48,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    FilledButton.tonalIcon(
+                      onPressed: () {
+                        setState(() => _drawEnabled = !_drawEnabled);
+                      },
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(0, 44),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: Icon(
+                        _drawEnabled
+                            ? Icons.edit_off_rounded
+                            : Icons.edit_rounded,
+                      ),
+                      label: Text(_drawEnabled ? 'Gotovo' : 'Crtaj'),
+                    ),
+                    const SizedBox(width: 6),
+                    IconButton(
+                      tooltip: 'Poništi zadnje',
+                      onPressed: _drawingController.canUndo()
+                          ? _drawingController.undo
+                          : null,
+                      icon: const Icon(Icons.undo_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Vrati poništeno',
+                      onPressed: _drawingController.canRedo()
+                          ? _drawingController.redo
+                          : null,
+                      icon: const Icon(Icons.redo_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Obriši oznake',
+                      onPressed: _drawingController.canClear()
+                          ? _drawingController.clear
+                          : null,
+                      icon: const Icon(Icons.layers_clear_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Rotiraj',
+                      onPressed: _rotate,
+                      icon: const Icon(Icons.rotate_right_rounded),
+                    ),
+                    IconButton(
+                      tooltip: 'Otvori veću sliku',
+                      onPressed: widget.onPreview,
+                      icon: const Icon(Icons.fullscreen_rounded),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
           Expanded(
@@ -2313,13 +2725,9 @@ final class _NoteImagePanel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 child: Material(
                   color: scheme.surfaceContainerHighest,
-                  child: InkWell(
-                    onTap: onPreview,
-                    child: _NoteImageViewer(
-                      bytes: bytes,
-                      rotationTurns: rotationTurns,
-                    ),
-                  ),
+                  child: _drawEnabled
+                      ? viewer
+                      : InkWell(onTap: widget.onPreview, child: viewer),
                 ),
               ),
             ),
@@ -2328,17 +2736,52 @@ final class _NoteImagePanel extends StatelessWidget {
       ),
     );
   }
+
+  void _replaceDrawingController() {
+    _drawingController
+      ..removeListener(_handleDrawingChanged)
+      ..dispose();
+    _drawingController = _createNoteDrawingController(
+      drawingJson: widget.drawingJson,
+      rotationTurns: widget.rotationTurns,
+    )..addListener(_handleDrawingChanged);
+    setState(() {});
+  }
+
+  void _syncDrawingRotation() {
+    _drawingController.drawConfig.value = _drawingController.drawConfig.value
+        .copyWith(angle: widget.rotationTurns);
+  }
+
+  void _rotate() {
+    setState(() {
+      _drawingController.turn();
+    });
+    widget.onRotate();
+  }
+
+  void _handleDrawingChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    unawaited(widget.onDrawingChanged(_drawingController.getJsonList()));
+  }
 }
 
 final class _NoteImageThumbnail extends StatelessWidget {
   const _NoteImageThumbnail({
     required this.bytes,
     required this.rotationTurns,
+    required this.imageSize,
+    required this.drawingJson,
     required this.onTap,
   });
 
   final Uint8List bytes;
   final int rotationTurns;
+  final Size? imageSize;
+  final List<Map<String, dynamic>> drawingJson;
   final VoidCallback onTap;
 
   @override
@@ -2358,10 +2801,11 @@ final class _NoteImageThumbnail extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _RotatedNoteImage(
+                _NoteImageDrawingPreview(
                   bytes: bytes,
                   rotationTurns: rotationTurns,
-                  fit: BoxFit.cover,
+                  imageSize: imageSize,
+                  drawingJson: drawingJson,
                 ),
                 Align(
                   alignment: Alignment.topRight,
@@ -2391,61 +2835,200 @@ final class _NoteImageThumbnail extends StatelessWidget {
   }
 }
 
-final class _NoteImageViewer extends StatelessWidget {
-  const _NoteImageViewer({required this.bytes, required this.rotationTurns});
+final class _NoteImageDrawingPreview extends StatefulWidget {
+  const _NoteImageDrawingPreview({
+    required this.bytes,
+    required this.rotationTurns,
+    required this.imageSize,
+    required this.drawingJson,
+  });
 
   final Uint8List bytes;
   final int rotationTurns;
+  final Size? imageSize;
+  final List<Map<String, dynamic>> drawingJson;
+
+  @override
+  State<_NoteImageDrawingPreview> createState() =>
+      _NoteImageDrawingPreviewState();
+}
+
+final class _NoteImageDrawingPreviewState
+    extends State<_NoteImageDrawingPreview> {
+  late DrawingController _drawingController;
+
+  @override
+  void initState() {
+    super.initState();
+    _drawingController = _createNoteDrawingController(
+      drawingJson: widget.drawingJson,
+      rotationTurns: widget.rotationTurns,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _NoteImageDrawingPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bytes != widget.bytes ||
+        oldWidget.drawingJson != widget.drawingJson) {
+      _drawingController.dispose();
+      _drawingController = _createNoteDrawingController(
+        drawingJson: widget.drawingJson,
+        rotationTurns: widget.rotationTurns,
+      );
+      return;
+    }
+    if (oldWidget.rotationTurns != widget.rotationTurns) {
+      _drawingController.drawConfig.value = _drawingController.drawConfig.value
+          .copyWith(angle: widget.rotationTurns);
+    }
+  }
+
+  @override
+  void dispose() {
+    _drawingController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: InteractiveViewer(
-        minScale: 0.5,
-        maxScale: 5,
-        child: Center(
-          child: _RotatedNoteImage(
-            bytes: bytes,
-            rotationTurns: rotationTurns,
-            fit: BoxFit.contain,
-          ),
-        ),
+    return IgnorePointer(
+      child: _NoteImageDrawingBoard(
+        bytes: widget.bytes,
+        imageSize: widget.imageSize,
+        rotationTurns: widget.rotationTurns,
+        drawEnabled: false,
+        controller: _drawingController,
       ),
     );
   }
 }
 
-final class _RotatedNoteImage extends StatelessWidget {
-  const _RotatedNoteImage({
+final class _NoteImageDrawingBoard extends StatefulWidget {
+  const _NoteImageDrawingBoard({
+    super.key,
     required this.bytes,
+    required this.imageSize,
     required this.rotationTurns,
-    required this.fit,
+    required this.drawEnabled,
+    required this.controller,
   });
 
   final Uint8List bytes;
+  final Size? imageSize;
   final int rotationTurns;
-  final BoxFit fit;
+  final bool drawEnabled;
+  final DrawingController controller;
+
+  @override
+  State<_NoteImageDrawingBoard> createState() => _NoteImageDrawingBoardState();
+}
+
+final class _NoteImageDrawingBoardState extends State<_NoteImageDrawingBoard> {
+  late final TransformationController _transformationController;
+  Size? _lastViewportSize;
+  Size? _lastBoardSize;
+  int? _lastRotationTurns;
+
+  @override
+  void initState() {
+    super.initState();
+    _transformationController = TransformationController();
+    _syncControllerRotation();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NoteImageDrawingBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _lastViewportSize = null;
+      _lastBoardSize = null;
+      _lastRotationTurns = null;
+    }
+    _syncControllerRotation();
+  }
+
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return RotatedBox(
-      quarterTurns: rotationTurns,
-      child: Image.memory(
-        bytes,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) {
-          return Center(
-            child: Icon(
-              Icons.broken_image_outlined,
-              color: scheme.onSurfaceVariant,
-              size: 42,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportSize = _noteImageViewerSizeForConstraints(
+          context,
+          constraints,
+        );
+        final boardSize = _noteImageBoardSize(widget.imageSize);
+        _queueFitToView(viewportSize: viewportSize, boardSize: boardSize);
+        return SizedBox.fromSize(
+          size: viewportSize,
+          child: ColoredBox(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            child: ClipRect(
+              child: DrawingBoard(
+                controller: widget.controller,
+                transformationController: _transformationController,
+                minScale: 0.05,
+                maxScale: 8,
+                boardPanEnabled: !widget.drawEnabled,
+                boardScaleEnabled: !widget.drawEnabled,
+                boardClipBehavior: Clip.hardEdge,
+                alignment: Alignment.center,
+                background: SizedBox.fromSize(
+                  size: boardSize,
+                  child: Image.memory(
+                    widget.bytes,
+                    fit: BoxFit.fill,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          size: 42,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
+  }
+
+  void _syncControllerRotation() {
+    if (widget.controller.drawConfig.value.angle == widget.rotationTurns) {
+      return;
+    }
+    widget.controller.drawConfig.value = widget.controller.drawConfig.value
+        .copyWith(angle: widget.rotationTurns);
+  }
+
+  void _queueFitToView({required Size viewportSize, required Size boardSize}) {
+    if (_lastViewportSize == viewportSize &&
+        _lastBoardSize == boardSize &&
+        _lastRotationTurns == widget.rotationTurns) {
+      return;
+    }
+    _lastViewportSize = viewportSize;
+    _lastBoardSize = boardSize;
+    _lastRotationTurns = widget.rotationTurns;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _transformationController.value = _noteImageFitMatrix(
+        viewportSize: viewportSize,
+        boardSize: boardSize,
+        rotationTurns: widget.rotationTurns,
+      );
+    });
   }
 }
 

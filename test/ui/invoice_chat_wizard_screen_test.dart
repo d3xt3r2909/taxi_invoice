@@ -174,7 +174,7 @@ void main() {
       lines: const [],
     );
     final noteImageStorage = _MemoryInvoiceChatNoteImageStorage({
-      'note-1': const InvoiceChatNoteImage(
+      'note-1': InvoiceChatNoteImage(
         id: 'note-1',
         base64: _transparentPngBase64,
         mimeType: 'image/png',
@@ -190,6 +190,91 @@ void main() {
 
     expect(find.byTooltip('Otvori sliku bilješke'), findsOneWidget);
   });
+
+  testWidgets('opens note image markup tools from the thumbnail', (
+    tester,
+  ) async {
+    final draft = InvoiceChatDraft(
+      id: 'draft-1',
+      createdAt: DateTime(2026, 5, 1, 8),
+      updatedAt: DateTime(2026, 5, 1, 9),
+      step: 'recipient',
+      noteImageId: 'note-1',
+      noteImageMimeType: 'image/png',
+      noteImageName: 'biljeska.png',
+      lines: const [],
+    );
+    final noteImageStorage = _MemoryInvoiceChatNoteImageStorage({
+      'note-1': InvoiceChatNoteImage(
+        id: 'note-1',
+        base64: _transparentPngBase64,
+        mimeType: 'image/png',
+        name: 'biljeska.png',
+      ),
+    });
+
+    await tester.pumpInvoiceChatWizard(
+      draft: draft,
+      noteImageStorage: noteImageStorage,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Otvori sliku bilješke'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Crtaj'));
+    await tester.pump();
+    await tester.dragFrom(
+      tester.getCenter(find.byType(Dialog)),
+      const Offset(40, 40),
+    );
+    await tester.pumpAndSettle();
+
+    expect(noteImageStorage.images['note-1']?.drawingJson, hasLength(1));
+  });
+
+  testWidgets('draws directly on the desktop note preview', (tester) async {
+    tester.view.physicalSize = const Size(1728, 912);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final draft = InvoiceChatDraft(
+      id: 'draft-1',
+      createdAt: DateTime(2026, 5, 1, 8),
+      updatedAt: DateTime(2026, 5, 1, 9),
+      step: 'recipient',
+      noteImageId: 'note-1',
+      noteImageMimeType: 'image/png',
+      noteImageName: 'biljeska.png',
+      lines: const [],
+    );
+    final noteImageStorage = _MemoryInvoiceChatNoteImageStorage({
+      'note-1': InvoiceChatNoteImage(
+        id: 'note-1',
+        base64: _transparentPngBase64,
+        mimeType: 'image/png',
+        name: 'biljeska.png',
+      ),
+    });
+
+    await tester.pumpInvoiceChatWizard(
+      draft: draft,
+      noteImageStorage: noteImageStorage,
+      theme: ThemeData(
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Crtaj'));
+    await tester.pump();
+    await tester.dragFrom(
+      tester.getCenter(find.byKey(const ValueKey('note-image-panel-viewer'))),
+      const Offset(40, 40),
+    );
+    await tester.pumpAndSettle();
+
+    expect(noteImageStorage.images['note-1']?.drawingJson, hasLength(1));
+  });
 }
 
 const _transparentPngBase64 =
@@ -200,9 +285,11 @@ extension on WidgetTester {
     InvoiceStoreController? store,
     InvoiceChatDraft? draft,
     InvoiceChatNoteImageStorage? noteImageStorage,
+    ThemeData? theme,
   }) async {
     await pumpWidget(
       MaterialApp(
+        theme: theme,
         home: InvoiceChatWizardScreen(
           store:
               store ??
