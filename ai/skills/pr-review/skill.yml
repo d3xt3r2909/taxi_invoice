@@ -1,0 +1,30 @@
+id: pr-review
+name: pr-review
+title: PR Review
+owner: platform
+status: active
+
+description: Review pull requests against App Taxi Invoice correctness, privacy, testing, PDF-generation, persistence, and architecture standards. Use when asked to review a PR, inspect a diff, or prepare review comments.
+
+targets:
+  - codex-skills
+  - claude
+  - cursor
+
+source:
+  instructions: instructions.md
+
+resources:
+  references:
+    - references/checklist.md
+
+openai:
+  display_name: PR Review
+  short_description: Review PRs using app standards
+  default_prompt: Review this pull request using the team checklist.
+
+claude:
+  allowed_tools:
+    - Read
+    - Grep
+    - Glob

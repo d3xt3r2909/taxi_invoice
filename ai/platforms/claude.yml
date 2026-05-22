@@ -1,0 +1,13 @@
+id: claude
+display_name: Claude Code
+plugin: claude
+
+owned:
+  exact_files:
+    - CLAUDE.md
+  exact_dirs:
+    - .claude/skills/ai-instructions
+    - .claude/skills/pr-review
+
+requirements:
+  skill_file: SKILL.md

@@ -1,0 +1,18 @@
+scopes:
+  root:
+    description: Entire repository
+    paths:
+      - "**/*"
+
+  dart:
+    description: Dart and Flutter source files
+    paths:
+      - "**/*.dart"
+      - "pubspec.yaml"
+      - "*/pubspec.yaml"
+      - "packages/*/pubspec.yaml"
+
+  github:
+    description: GitHub workflow and review automation files
+    paths:
+      - ".github/**/*"

@@ -1,0 +1,15 @@
+id: copilot-review
+display_name: GitHub Copilot Review
+plugin: copilot-review
+
+owned:
+  exact_dirs:
+    - .github/instructions/ai-review
+
+limits:
+  max_chars_per_file: 3900
+
+requirements:
+  extension: .instructions.md
+  required_frontmatter:
+    - applyTo

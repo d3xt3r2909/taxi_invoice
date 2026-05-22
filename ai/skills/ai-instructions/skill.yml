@@ -1,0 +1,35 @@
+id: ai-instructions
+name: ai-instructions
+title: AI Instructions
+owner: platform
+status: active
+
+description: Use when modifying this repository's AI instruction compiler, generated agent files, platform support, fragments, targets, skills, references, or validation rules under ai/** and tools/ai/**.
+
+targets:
+  - codex-skills
+  - cursor
+  - claude
+
+source:
+  instructions: instructions.md
+
+resources:
+  references:
+    - references/source-model.md
+    - references/platforms.md
+    - references/authoring.md
+
+openai:
+  display_name: AI Instructions
+  short_description: Extend AI instruction sources and generators
+  default_prompt: Use $ai-instructions to update the repository AI instruction compiler or add new AI instruction content.
+
+claude:
+  allowed_tools:
+    - Read
+    - Grep
+    - Glob
+    - Bash
+    - Edit
+    - Write

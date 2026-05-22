@@ -1,0 +1,26 @@
+outputs:
+  - id: copilot.repo
+    target: .github/copilot-instructions.md
+    scope: root
+    title: Copilot Instructions - App Taxi Invoice
+    include:
+      - fragment: repo
+        variant: standard
+      - fragment: architecture
+        variant: standard
+      - fragment: dependency-injection
+        variant: standard
+      - fragment: state-management
+        variant: standard
+      - fragment: navigation-localization
+        variant: standard
+      - fragment: code-style
+        variant: standard
+      - fragment: testing
+        variant: standard
+      - fragment: build-test
+        variant: standard
+      - fragment: security
+        variant: standard
+      - fragment: review
+        variant: standard

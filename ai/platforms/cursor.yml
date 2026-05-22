@@ -1,0 +1,18 @@
+id: cursor
+display_name: Cursor
+plugin: cursor
+
+owned:
+  exact_dirs:
+    - .cursor/rules/ai
+    - .cursor/skills
+
+limits:
+  always_on_max_chars: 6000
+
+requirements:
+  extension: .mdc
+  required_frontmatter:
+    - description
+    - alwaysApply
+  skill_file: SKILL.md

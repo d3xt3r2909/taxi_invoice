@@ -1,0 +1,16 @@
+{
+  "generated_by": "scripts/ai",
+  "platform": "codex-skills",
+  "target": ".agents/skills/app-coding-rules",
+  "sources": [
+    "ai/skills/app-coding-rules/skill.yml",
+    "ai/skills/app-coding-rules/instructions.md",
+    "ai/skills/app-coding-rules/references/test-writing.md"
+  ],
+  "files": [
+    ".ai-manifest.json",
+    "SKILL.md",
+    "agents/openai.yaml",
+    "references/test-writing.md"
+  ]
+}

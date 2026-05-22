@@ -1,0 +1,20 @@
+{
+  "generated_by": "scripts/ai",
+  "platform": "codex-skills",
+  "target": ".agents/skills/ai-instructions",
+  "sources": [
+    "ai/skills/ai-instructions/skill.yml",
+    "ai/skills/ai-instructions/instructions.md",
+    "ai/skills/ai-instructions/references/source-model.md",
+    "ai/skills/ai-instructions/references/platforms.md",
+    "ai/skills/ai-instructions/references/authoring.md"
+  ],
+  "files": [
+    ".ai-manifest.json",
+    "SKILL.md",
+    "agents/openai.yaml",
+    "references/authoring.md",
+    "references/platforms.md",
+    "references/source-model.md"
+  ]
+}

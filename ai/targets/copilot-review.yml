@@ -1,0 +1,19 @@
+outputs:
+  - id: copilot-review.default
+    target: .github/instructions/ai-review/review.instructions.md
+    scope: root
+    title: App Taxi Invoice Copilot Review Instructions
+    frontmatter:
+      applyTo: "**"
+      excludeAgent: "cloud-agent"
+    limits:
+      max_chars: 3900
+    include:
+      - fragment: review
+        variant: compressed
+      - fragment: security
+        variant: compressed
+      - fragment: code-style
+        variant: compressed
+      - fragment: testing
+        variant: compressed

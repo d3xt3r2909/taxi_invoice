@@ -1,0 +1,23 @@
+id: app-coding-rules
+name: app-coding-rules
+title: App Coding Rules
+owner: platform
+status: active
+
+description: Use for App Taxi Invoice implementation standards. Apply when an AI coding agent modifies Flutter/Dart code, PDF generation, persistence, import/export, platform helpers, or tests in this codebase.
+
+targets:
+  - codex-skills
+  - cursor
+
+source:
+  instructions: instructions.md
+
+resources:
+  references:
+    - references/test-writing.md
+
+openai:
+  display_name: App Coding Rules
+  short_description: Rules for code and tests in this repo
+  default_prompt: Use $app-coding-rules to implement code and tests according to this repository's rules.

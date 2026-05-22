@@ -1,0 +1,47 @@
+outputs:
+  - id: cursor.project
+    target: .cursor/rules/ai/project.mdc
+    scope: dart
+    title: App Taxi Invoice Flutter Project Rules
+    frontmatter:
+      description: App Taxi Invoice Flutter and Dart project rules
+      globs:
+        - "**/*.dart"
+        - "**/*.yaml"
+        - "**/*.yml"
+        - "pubspec.yaml"
+      alwaysApply: true
+    include:
+      - fragment: repo
+        variant: compressed
+      - fragment: build-test
+        variant: compressed
+      - fragment: architecture
+        variant: compressed
+      - fragment: dependency-injection
+        variant: compressed
+      - fragment: state-management
+        variant: compressed
+      - fragment: navigation-localization
+        variant: compressed
+      - fragment: code-style
+        variant: compressed
+      - fragment: testing
+        variant: compressed
+      - fragment: security
+        variant: compressed
+
+  - id: cursor.review
+    target: .cursor/rules/ai/review.mdc
+    scope: root
+    title: App Taxi Invoice Review Rules
+    frontmatter:
+      description: App Taxi Invoice pull request review rules
+      alwaysApply: false
+    include:
+      - fragment: review
+        variant: compressed
+      - fragment: security
+        variant: compressed
+      - fragment: testing
+        variant: compressed

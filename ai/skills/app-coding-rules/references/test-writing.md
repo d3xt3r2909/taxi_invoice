@@ -1,0 +1,49 @@
+# Test Writing Rules
+
+Use these rules when creating or updating tests in this repository.
+
+## Structure
+
+- Test one observable behavior per test.
+- Prefer one expectation per test.
+- Prefer names that describe the expected result.
+- Use AAA as the mental model: Assemble the required inputs/state, Act by triggering the meaningful behavior, and Assert the observable result.
+- When all three AAA sections are present, separate them with exactly two blank separator lines: one between Assemble and Act, and one between Act and Assert.
+- Omit Assemble or Act when that section adds no value. If there is no meaningful interaction, use only Assemble and Assert.
+- Treat looking up a widget, state value, or callback result for verification as part of Assert, not as Act.
+- Do not add comments or labels named `Assemble`, `Act`, or `Assert` inside tests.
+
+## Expectations
+
+- Write expectations as observable results, not implementation hints.
+- Prefer direct assertions on public widget/cubit/state surfaces.
+- Avoid broad tests that verify several unrelated outcomes.
+- Cover edge cases and failure behavior when they are part of the requested behavior.
+- Keep helper setup concise and aligned with existing test helpers.
+
+## Setup Values
+
+- Pass explicit parameters for values that make the tested behavior obvious.
+- Use helper defaults for values that are not relevant to the specific behavior under test.
+- When a nullable parameter must be passed as `null` to test null behavior, include the local lint ignore needed for that intentional null/default argument.
+
+## Setup Helpers
+
+- For widget tests, create `WidgetTester` extensions or local helpers that pump the widget under test with sensible defaults.
+- Keep widget setup extensions close to the test file unless an existing shared helper already fits.
+- Give setup extension parameters explicit names that mirror the widget API.
+- Use setup extension defaults for irrelevant values so each test only passes values that matter to the tested behavior.
+- For logic tests, prefer an ArrangeBuilder pattern for mocks, default stubbing, and reusable object construction.
+- Add the detailed ArrangeBuilder rule later as a separate rule.
+
+## PDF Tests
+
+- Prefer asserting visible text, model-to-output mapping, and document metadata over byte-for-byte PDF snapshots.
+- Keep PDF tests deterministic: control dates, IDs, locale-sensitive formatting, and input ordering.
+- When platform save/reveal behavior is involved, test platform-neutral logic separately from platform adapters.
+
+## Validation
+
+- Run the narrowest relevant test command for the changed test file.
+- Run analyzer on changed production files and test files when practical.
+- Report any command that could not be run and why.

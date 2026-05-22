@@ -1,0 +1,37 @@
+# AI Instructions
+
+Use this skill when changing the AI instruction source tree, generated AI tool files, or the compiler that connects them.
+
+## Workflow
+
+1. Identify whether the request is about content, a skill, a platform, validation, or generated output drift.
+
+2. Read the focused reference before editing:
+   - `references/source-model.md` for the directory model and data flow.
+   - `references/platforms.md` when adding or changing platform support.
+   - `references/authoring.md` when adding fragments, skills, references, or target assemblies.
+
+3. Edit source files under `ai/**` first. Edit generated files only by running `scripts/ai generate`.
+
+4. When adding a generated output path, register ownership in `ai/platforms/<platform>.yml` so drift detection can protect it.
+
+5. Keep generated content traceable. Every generated markdown, metadata, reference, or script output should include the compiler trace or `.ai-manifest.json`.
+
+6. Validate with:
+
+```bash
+scripts/ai validate
+scripts/ai generate --check
+python3 -m unittest tools.ai.tests.test_compiler
+```
+
+Run `scripts/ai generate` before `generate --check` when generated outputs are stale or missing.
+
+## Design Rules
+
+- Keep `SKILL.md` bodies short and move detailed guidance into `references/`.
+- Prefer one source skill in `ai/skills/<name>` over hand-maintained per-platform copies.
+- Use `targets` to opt skills into platforms; do not infer platform support from directory names.
+- Add tests for each new platform output type or required file shape.
+- Keep platform-specific metadata optional and isolated, such as `openai` or `claude` blocks in `skill.yml`.
+- Do not commit local paths, tokens, credentials, or user-specific configuration.

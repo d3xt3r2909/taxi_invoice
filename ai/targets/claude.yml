@@ -1,0 +1,26 @@
+outputs:
+  - id: claude.memory
+    target: CLAUDE.md
+    scope: root
+    title: App Taxi Invoice Claude Instructions
+    include_imports:
+      - AGENTS.md
+    include:
+      - fragment: repo
+        variant: compressed
+      - fragment: build-test
+        variant: compressed
+      - fragment: architecture
+        variant: compressed
+      - fragment: dependency-injection
+        variant: compressed
+      - fragment: state-management
+        variant: compressed
+      - fragment: navigation-localization
+        variant: compressed
+      - fragment: code-style
+        variant: compressed
+      - fragment: testing
+        variant: compressed
+      - fragment: security
+        variant: compressed

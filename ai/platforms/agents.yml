@@ -1,0 +1,10 @@
+id: agents
+display_name: AGENTS.md
+plugin: agents
+
+owned:
+  exact_files:
+    - AGENTS.md
+
+limits:
+  max_chars_per_file: 12000

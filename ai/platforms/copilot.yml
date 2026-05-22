@@ -1,0 +1,7 @@
+id: copilot
+display_name: GitHub Copilot Instructions
+plugin: copilot
+
+owned:
+  exact_files:
+    - .github/copilot-instructions.md

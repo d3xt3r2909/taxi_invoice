@@ -1,0 +1,13 @@
+id: codex-skills
+display_name: Codex Skills
+plugin: codex-skills
+
+owned:
+  exact_dirs:
+    - .agents/skills/ai-instructions
+    - .agents/skills/app-coding-rules
+    - .agents/skills/pr-review
+
+requirements:
+  skill_file: SKILL.md
+  openai_metadata: agents/openai.yaml

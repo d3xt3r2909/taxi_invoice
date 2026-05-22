@@ -1,0 +1,28 @@
+outputs:
+  - id: agents.root
+    target: AGENTS.md
+    scope: root
+    title: Agent Instructions
+    limits:
+      max_chars: 12000
+    include:
+      - fragment: repo
+        variant: standard
+      - fragment: build-test
+        variant: standard
+      - fragment: architecture
+        variant: compressed
+      - fragment: dependency-injection
+        variant: compressed
+      - fragment: state-management
+        variant: compressed
+      - fragment: navigation-localization
+        variant: compressed
+      - fragment: code-style
+        variant: compressed
+      - fragment: testing
+        variant: compressed
+      - fragment: security
+        variant: compressed
+      - fragment: review
+        variant: compressed

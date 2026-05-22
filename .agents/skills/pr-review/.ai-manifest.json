@@ -1,0 +1,16 @@
+{
+  "generated_by": "scripts/ai",
+  "platform": "codex-skills",
+  "target": ".agents/skills/pr-review",
+  "sources": [
+    "ai/skills/pr-review/skill.yml",
+    "ai/skills/pr-review/instructions.md",
+    "ai/skills/pr-review/references/checklist.md"
+  ],
+  "files": [
+    ".ai-manifest.json",
+    "SKILL.md",
+    "agents/openai.yaml",
+    "references/checklist.md"
+  ]
+}

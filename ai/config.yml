@@ -1,0 +1,13 @@
+project:
+  name: App Taxi Invoice
+  description: Standalone Flutter app for creating, storing, and exporting taxi invoice PDFs.
+
+generated_by: scripts/ai
+
+enabled_platforms:
+  - agents
+  - cursor
+  - copilot
+  - copilot-review
+  - claude
+  - codex-skills
