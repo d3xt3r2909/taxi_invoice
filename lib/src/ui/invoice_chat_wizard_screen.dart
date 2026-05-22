@@ -13,6 +13,9 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
+const _assistantAvatarAsset = 'assets/branding/assistant_fab.png';
+const _assistantAvatarSize = 32.0;
+const _assistantAvatarGap = 8.0;
 
 final class InvoiceChatWizardScreen extends StatefulWidget {
   const InvoiceChatWizardScreen({
@@ -1338,11 +1341,7 @@ final class _ActiveQuestion extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              Icons.question_answer_outlined,
-              size: 22,
-              color: theme.colorScheme.onPrimaryContainer,
-            ),
+            const _AssistantChatAvatar(size: 30),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -1412,24 +1411,48 @@ final class _ChatBubble extends StatelessWidget {
         ),
       ),
     );
-    return Align(
-      alignment: fromUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 340),
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: onTap == null
-              ? bubble
-              : Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
-                    onTap: onTap,
-                    child: bubble,
+    final interactiveBubble = onTap == null
+        ? bubble
+        : Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: onTap,
+              child: bubble,
+            ),
+          );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableBubbleWidth = fromUser
+            ? constraints.maxWidth
+            : constraints.maxWidth - _assistantAvatarSize - _assistantAvatarGap;
+        final bubbleMaxWidth =
+            availableBubbleWidth.isFinite && availableBubbleWidth < 340
+            ? availableBubbleWidth
+            : 340.0;
+        final safeBubbleMaxWidth = bubbleMaxWidth < 0 ? 0.0 : bubbleMaxWidth;
+        final constrainedBubble = ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: safeBubbleMaxWidth),
+          child: interactiveBubble,
+        );
+        return Align(
+          alignment: fromUser ? Alignment.centerRight : Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: fromUser
+                ? constrainedBubble
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _AssistantChatAvatar(),
+                      const SizedBox(width: _assistantAvatarGap),
+                      constrainedBubble,
+                    ],
                   ),
-                ),
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1441,18 +1464,80 @@ final class _ChatContentBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(16),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableBubbleWidth =
+            constraints.maxWidth - _assistantAvatarSize - _assistantAvatarGap;
+        final bubbleMaxWidth =
+            availableBubbleWidth.isFinite && availableBubbleWidth < 560
+            ? availableBubbleWidth
+            : 560.0;
+        final safeBubbleMaxWidth = bubbleMaxWidth < 0 ? 0.0 : bubbleMaxWidth;
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _AssistantChatAvatar(),
+                const SizedBox(width: _assistantAvatarGap),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: safeBubbleMaxWidth),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: child,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            child: Padding(padding: const EdgeInsets.all(10), child: child),
+          ),
+        );
+      },
+    );
+  }
+}
+
+final class _AssistantChatAvatar extends StatelessWidget {
+  const _AssistantChatAvatar({this.size = _assistantAvatarSize});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ExcludeSemantics(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: scheme.surface,
+          border: Border.all(color: scheme.outlineVariant),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: ClipOval(
+            child: Image.asset(
+              _assistantAvatarAsset,
+              width: size - 4,
+              height: size - 4,
+              fit: BoxFit.cover,
+            ),
           ),
         ),
       ),
