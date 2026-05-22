@@ -40,6 +40,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/branding/assistant_fab.png
     - assets/branding/home_header.png
     - assets/branding/login_background_panel.png
     - assets/branding/login_hero.png

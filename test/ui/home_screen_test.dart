@@ -143,12 +143,55 @@ void main() {
       );
 
       expect(
-        find.widgetWithText(FloatingActionButton, 'Pomoćnik za račun'),
+        find.byKey(const ValueKey('assistant-fab-expanded')),
         findsOneWidget,
       );
       expect(find.byTooltip('Napredno: novi račun ručno'), findsOneWidget);
     },
   );
+
+  testWidgets('collapses assistant action while scrolling down', (
+    tester,
+  ) async {
+    await initializeDateFormatting('bs_BA');
+    final store = await _loadedStore(
+      invoices: [
+        for (var i = 0; i < 8; i++)
+          _invoice(
+            id: 'invoice-$i',
+            invoiceNumber: '0$i/26',
+            recipientName: 'Firma $i',
+            issueDate: DateTime(2026, 5, i + 1),
+          ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          store: store,
+          settings: AppSettingsController(),
+          auth: AppAuthController.notConfigured(),
+        ),
+      ),
+    );
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -260));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('assistant-fab-collapsed')),
+      findsOneWidget,
+    );
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 160));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('assistant-fab-expanded')),
+      findsOneWidget,
+    );
+  });
 }
 
 Future<InvoiceStoreController> _loadedStore({

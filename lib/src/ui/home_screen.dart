@@ -15,8 +15,10 @@ import 'package:app_taxi_invoice/src/ui/service_recipients_list_screen.dart';
 import 'package:app_taxi_invoice/src/ui/settings_screen.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
 const _homeHeaderAsset = 'assets/branding/home_header.png';
+const _assistantFabAsset = 'assets/branding/assistant_fab.png';
 
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -40,6 +42,7 @@ final class HomeScreen extends StatefulWidget {
 
 final class _HomeScreenState extends State<HomeScreen> {
   _InvoiceHomeFilter _filter = _InvoiceHomeFilter.all;
+  bool _assistantFabExpanded = true;
 
   Future<void> _previewPdf(BuildContext context, StoredInvoice invoice) async {
     final bytes = await buildInvoicePdfBytes(invoice);
@@ -148,6 +151,21 @@ final class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  bool _handleUserScroll(UserScrollNotification notification) {
+    final shouldExpand = switch (notification.direction) {
+      ScrollDirection.forward => true,
+      ScrollDirection.reverse => false,
+      _ =>
+        notification.metrics.pixels <= notification.metrics.minScrollExtent + 8
+            ? true
+            : _assistantFabExpanded,
+    };
+    if (_assistantFabExpanded != shouldExpand) {
+      setState(() => _assistantFabExpanded = shouldExpand);
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = widget.store;
@@ -159,76 +177,185 @@ final class _HomeScreenState extends State<HomeScreen> {
     final list = _filterInvoices(allInvoices, _filter, DateTime.now());
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          _HomeSliverAppBar(
-            onOpenManualInvoice: _openManualInvoice,
-            onOpenRecipients: _openServiceRecipients,
-            onOpenSettings: _openSettings,
-          ),
-          SliverToBoxAdapter(child: _StoreStatusBanner(store: store)),
-          if (allInvoices.isNotEmpty)
-            SliverToBoxAdapter(
-              child: _InvoiceFilterBar(
-                selected: _filter,
-                onSelected: (filter) => setState(() => _filter = filter),
-              ),
+      body: NotificationListener<UserScrollNotification>(
+        onNotification: _handleUserScroll,
+        child: CustomScrollView(
+          slivers: [
+            _HomeSliverAppBar(
+              onOpenManualInvoice: _openManualInvoice,
+              onOpenRecipients: _openServiceRecipients,
+              onOpenSettings: _openSettings,
             ),
-          if (allInvoices.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
-              child: _HomeEmptyState(
-                message:
-                    'Nema sačuvanih računa.\n\nNajlakše je početi preko '
-                    'dugmeta „Pomoćnik za račun” dolje.',
+            SliverToBoxAdapter(child: _StoreStatusBanner(store: store)),
+            if (allInvoices.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _InvoiceFilterBar(
+                  selected: _filter,
+                  onSelected: (filter) => setState(() => _filter = filter),
+                ),
               ),
-            )
-          else if (list.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: _HomeEmptyState(message: _emptyFilterMessage(_filter)),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-              sliver: SliverList.builder(
-                itemCount: list.length,
-                itemBuilder: (context, index) {
-                  final inv = list[index];
-                  return _InvoiceListItem(
-                    invoice: inv,
-                    onOpen: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => InvoiceDetailScreen(
-                            store: store,
-                            settings: widget.settings,
-                            invoice: inv,
+            if (allInvoices.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: _HomeEmptyState(
+                  message:
+                      'Nema sačuvanih računa.\n\nNajlakše je početi preko '
+                      'dugmeta „Pomoćnik za račun” dolje.',
+                ),
+              )
+            else if (list.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _HomeEmptyState(message: _emptyFilterMessage(_filter)),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+                sliver: SliverList.builder(
+                  itemCount: list.length,
+                  itemBuilder: (context, index) {
+                    final inv = list[index];
+                    return _InvoiceListItem(
+                      invoice: inv,
+                      onOpen: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => InvoiceDetailScreen(
+                              store: store,
+                              settings: widget.settings,
+                              invoice: inv,
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                    onPreviewPdf: () => _previewPdf(context, inv),
-                    storedOnline: store.isInvoiceStoredOnline(inv.id),
-                    canSaveOnline: store.canWrite,
-                    onSaveOnline: () => _saveInvoiceOnline(context, inv),
-                  );
-                },
+                        );
+                      },
+                      onPreviewPdf: () => _previewPdf(context, inv),
+                      storedOnline: store.isInvoiceStoredOnline(inv.id),
+                      canSaveOnline: store.canWrite,
+                      onSaveOnline: () => _saveInvoiceOnline(context, inv),
+                    );
+                  },
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: _AssistantFloatingActionButton(
+        expanded: _assistantFabExpanded,
         onPressed: _openAssistant,
-        icon: const Icon(Icons.chat_bubble_outline_rounded),
-        label: const Text('Pomoćnik za račun'),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
   }
 }
 
 enum _InvoiceHomeFilter { currentMonth, previousMonth, all }
+
+final class _AssistantFloatingActionButton extends StatelessWidget {
+  const _AssistantFloatingActionButton({
+    required this.expanded,
+    required this.onPressed,
+  });
+
+  final bool expanded;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final maxExpandedWidth = (MediaQuery.sizeOf(context).width - 32)
+        .clamp(64.0, 224.0)
+        .toDouble();
+    return Tooltip(
+      message: 'Pomoćnik za račun',
+      child: Semantics(
+        button: true,
+        label: 'Pomoćnik za račun',
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          width: expanded ? maxExpandedWidth : 64,
+          height: 64,
+          child: Material(
+            color: scheme.primaryContainer,
+            elevation: 6,
+            shadowColor: Colors.black.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(32),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(32),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 64,
+                          height: 64,
+                          child: Center(child: _AssistantFabAvatar(size: 58)),
+                        ),
+                        Expanded(
+                          child: ClipRect(
+                            child: AnimatedOpacity(
+                              duration: const Duration(milliseconds: 140),
+                              opacity: expanded ? 1 : 0,
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  left: 8,
+                                  right: 20,
+                                ),
+                                child: Text(
+                                  'Pomoćnik za račun',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.fade,
+                                  softWrap: false,
+                                  style: Theme.of(context).textTheme.labelLarge
+                                      ?.copyWith(
+                                        color: scheme.onPrimaryContainer,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox.shrink(
+                    key: ValueKey(
+                      expanded
+                          ? 'assistant-fab-expanded'
+                          : 'assistant-fab-collapsed',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _AssistantFabAvatar extends StatelessWidget {
+  const _AssistantFabAvatar({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: Image.asset(
+        _assistantFabAsset,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+      ),
+    );
+  }
+}
 
 final class _HomeSliverAppBar extends StatelessWidget {
   const _HomeSliverAppBar({
