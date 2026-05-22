@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
@@ -21,11 +23,13 @@ final class InvoiceChatWizardScreen extends StatefulWidget {
   const InvoiceChatWizardScreen({
     required this.store,
     required this.settings,
+    this.draft,
     super.key,
   });
 
   final InvoiceStoreController store;
   final AppSettingsController settings;
+  final InvoiceChatDraft? draft;
 
   @override
   State<InvoiceChatWizardScreen> createState() =>
@@ -54,6 +58,11 @@ final class _InvoiceChatWizardScreenState
   _ChatStep? _editingLineField;
   bool _storeOnline = true;
   bool _saving = false;
+  late String _draftId;
+  late DateTime _draftCreatedAt;
+  bool _draftHelpRequested = false;
+  bool _draftAutosaveQueued = false;
+  bool _draftDeleted = false;
   String? _recipientNameError;
   String? _invoiceNumberError;
   String? _routeError;
@@ -64,10 +73,23 @@ final class _InvoiceChatWizardScreenState
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _issueDate = DateTime(now.year, now.month, now.day);
-    _currentLineDate = _issueDate;
-    _invoiceNumber.text = _suggestedInvoiceNumber();
+    final draft = widget.draft;
+    if (draft == null) {
+      final now = DateTime.now();
+      _draftId = _uuid.v4();
+      _draftCreatedAt = now;
+      _issueDate = DateTime(now.year, now.month, now.day);
+      _currentLineDate = _issueDate;
+      _invoiceNumber.text = _suggestedInvoiceNumber();
+    } else {
+      _restoreDraft(draft);
+    }
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _queueDraftAutosave();
   }
 
   @override
@@ -83,6 +105,36 @@ final class _InvoiceChatWizardScreenState
     super.dispose();
   }
 
+  void _restoreDraft(InvoiceChatDraft draft) {
+    _draftId = draft.id;
+    _draftCreatedAt = draft.createdAt;
+    _draftHelpRequested = draft.helpRequested;
+    _step = _chatStepFromDraft(draft.step);
+    _manualRecipient = draft.manualRecipient;
+    final selectedRecipientId = draft.selectedRecipientId;
+    if (selectedRecipientId != null) {
+      _selectedRecipient = widget.store.recipientById(selectedRecipientId);
+    }
+    if (_selectedRecipient == null) {
+      _manualRecipient = true;
+      _manualRecipientName.text = draft.recipientName;
+      _manualRecipientAddress.text = draft.recipientAddress;
+      _manualRecipientJib.text = draft.recipientJib;
+    }
+    _issueDate = draft.issueDate;
+    _currentLineDate = draft.currentLineDate;
+    _invoiceNumber.text = draft.invoiceNumber.isEmpty
+        ? _suggestedInvoiceNumber()
+        : draft.invoiceNumber;
+    _route.text = draft.route;
+    _orderName.text = draft.orderName;
+    _amount.text = draft.amount;
+    _lines
+      ..clear()
+      ..addAll(draft.lines);
+    _storeOnline = draft.storeOnline;
+  }
+
   String get _recipientName {
     return _selectedRecipient?.name ?? _manualRecipientName.text.trim();
   }
@@ -93,6 +145,93 @@ final class _InvoiceChatWizardScreenState
 
   String get _recipientJib {
     return _selectedRecipient?.jib ?? _manualRecipientJib.text.trim();
+  }
+
+  bool get _hasMeaningfulDraftProgress {
+    return _draftHelpRequested ||
+        _recipientName.isNotEmpty ||
+        _route.text.trim().isNotEmpty ||
+        _orderName.text.trim().isNotEmpty ||
+        _amount.text.trim().isNotEmpty ||
+        _lines.isNotEmpty ||
+        _step != _ChatStep.recipient;
+  }
+
+  void _queueDraftAutosave() {
+    if (_draftAutosaveQueued || _draftDeleted || !mounted) {
+      return;
+    }
+    _draftAutosaveQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _draftAutosaveQueued = false;
+      if (mounted) {
+        unawaited(_autosaveDraft());
+      }
+    });
+  }
+
+  Future<void> _autosaveDraft({bool force = false}) async {
+    if (_draftDeleted || !widget.store.canWrite) {
+      return;
+    }
+    if (!force && !_hasMeaningfulDraftProgress) {
+      return;
+    }
+    try {
+      await widget.store.upsertInvoiceChatDraft(_buildCurrentDraft());
+    } catch (_) {
+      // Draft autosave should never interrupt the invoice flow.
+    }
+  }
+
+  InvoiceChatDraft _buildCurrentDraft() {
+    return InvoiceChatDraft(
+      id: _draftId,
+      createdAt: _draftCreatedAt,
+      updatedAt: DateTime.now(),
+      helpRequested: _draftHelpRequested,
+      step: _step.name,
+      selectedRecipientId: _selectedRecipient?.id,
+      manualRecipient: _manualRecipient,
+      recipientName: _recipientName,
+      recipientAddress: _recipientAddress,
+      recipientJib: _recipientJib,
+      invoiceNumber: _invoiceNumber.text.trim(),
+      issueDate: _issueDate,
+      currentLineDate: _currentLineDate,
+      route: _route.text.trim(),
+      orderName: _orderName.text.trim(),
+      amount: _amount.text.trim(),
+      lines: _lines,
+      storeOnline: _storeOnline,
+    );
+  }
+
+  Future<void> _requestHelp() async {
+    if (!widget.store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, widget.store);
+      return;
+    }
+    setState(() {
+      _draftHelpRequested = true;
+    });
+    await _autosaveDraft(force: true);
+    if (mounted) {
+      _showMessage('Pomoć je zatražena. Drugi korisnik može otvoriti nacrt.');
+    }
+  }
+
+  Future<void> _deleteDraftAfterSave() async {
+    if (_draftDeleted || !widget.store.canWrite) {
+      return;
+    }
+    _draftDeleted = true;
+    try {
+      await widget.store.deleteInvoiceChatDraft(_draftId);
+    } catch (_) {
+      // A saved invoice is more important than cleanup; the draft can be
+      // removed manually if a transient cloud write fails.
+    }
   }
 
   void _showMessage(String text) {
@@ -365,6 +504,12 @@ final class _InvoiceChatWizardScreenState
       return;
     }
     setState(() => _saving = false);
+    if (action != null) {
+      await _deleteDraftAfterSave();
+    }
+    if (!mounted) {
+      return;
+    }
     if (action == InvoiceSavePostAction.backToList) {
       Navigator.of(context).popUntil((route) => route.isFirst);
       return;
@@ -377,6 +522,10 @@ final class _InvoiceChatWizardScreenState
   void _resetForNextInvoice() {
     final now = DateTime.now();
     setState(() {
+      _draftId = _uuid.v4();
+      _draftCreatedAt = now;
+      _draftHelpRequested = false;
+      _draftDeleted = false;
       _manualRecipientName.clear();
       _manualRecipientAddress.clear();
       _manualRecipientJib.clear();
@@ -554,7 +703,23 @@ final class _InvoiceChatWizardScreenState
     final screenHeight = MediaQuery.sizeOf(context).height;
     _scheduleMessagesScrollIfNeeded();
     return Scaffold(
-      appBar: AppBar(title: const Text('Pomoćnik za račun')),
+      appBar: AppBar(
+        title: const Text('Pomoćnik za račun'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: _draftHelpRequested ? null : _requestHelp,
+              icon: Icon(
+                _draftHelpRequested
+                    ? Icons.support_agent
+                    : Icons.front_hand_outlined,
+              ),
+              label: Text(_draftHelpRequested ? 'Pomoć zatražena' : 'Pomoć'),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Expanded(
@@ -619,6 +784,14 @@ final class _InvoiceChatWizardScreenState
         fromUser: false,
       ),
     ];
+    if (_draftHelpRequested) {
+      widgets.add(
+        const _ChatBubble(
+          text: 'Pomoć je zatražena. Drugi korisnik može otvoriti ovaj nacrt.',
+          fromUser: false,
+        ),
+      );
+    }
 
     _addQuestionAnswer(
       widgets,
@@ -1310,6 +1483,15 @@ enum _ChatStep {
   amount,
   moreLines,
   summary,
+}
+
+_ChatStep _chatStepFromDraft(String raw) {
+  for (final step in _ChatStep.values) {
+    if (step.name == raw) {
+      return step;
+    }
+  }
+  return _ChatStep.recipient;
 }
 
 final class _PanelColumn extends StatelessWidget {

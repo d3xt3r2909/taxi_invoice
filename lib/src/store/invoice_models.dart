@@ -51,10 +51,12 @@ final class StoreSnapshot {
     required List<String> orderNames,
     required List<ServiceRecipient> serviceRecipients,
     required List<StoredInvoice> invoices,
+    List<InvoiceChatDraft> invoiceChatDrafts = const [],
   }) : cities = List.unmodifiable(_dedupeSorted(cities)),
        orderNames = List.unmodifiable(_dedupeSorted(orderNames)),
        serviceRecipients = List.unmodifiable(serviceRecipients),
-       invoices = List.unmodifiable(invoices);
+       invoices = List.unmodifiable(invoices),
+       invoiceChatDrafts = List.unmodifiable(invoiceChatDrafts);
 
   static const int currentVersion = 2;
 
@@ -63,6 +65,7 @@ final class StoreSnapshot {
   final List<String> orderNames;
   final List<ServiceRecipient> serviceRecipients;
   final List<StoredInvoice> invoices;
+  final List<InvoiceChatDraft> invoiceChatDrafts;
 
   factory StoreSnapshot.empty() => StoreSnapshot(
     version: currentVersion,
@@ -70,6 +73,7 @@ final class StoreSnapshot {
     orderNames: [],
     serviceRecipients: [],
     invoices: [],
+    invoiceChatDrafts: [],
   );
 
   factory StoreSnapshot.fromJson(Map<String, dynamic> json) {
@@ -89,12 +93,17 @@ final class StoreSnapshot {
     final invoices = (json['invoices'] as List<dynamic>? ?? [])
         .map((e) => StoredInvoice.fromJson(e as Map<String, dynamic>))
         .toList();
+    final invoiceChatDrafts =
+        (json['invoiceChatDrafts'] as List<dynamic>? ?? [])
+            .map((e) => InvoiceChatDraft.fromJson(e as Map<String, dynamic>))
+            .toList();
     return StoreSnapshot(
       version: version,
       cities: cities,
       orderNames: orderNames,
       serviceRecipients: serviceRecipients,
       invoices: invoices,
+      invoiceChatDrafts: invoiceChatDrafts,
     );
   }
 
@@ -104,6 +113,8 @@ final class StoreSnapshot {
     'orderNames': orderNames,
     'serviceRecipients': serviceRecipients.map((e) => e.toJson()).toList(),
     'invoices': invoices.map((e) => e.toJson()).toList(),
+    if (invoiceChatDrafts.isNotEmpty)
+      'invoiceChatDrafts': invoiceChatDrafts.map((e) => e.toJson()).toList(),
   };
 
   StoreSnapshot copyWith({
@@ -112,12 +123,14 @@ final class StoreSnapshot {
     List<String>? orderNames,
     List<ServiceRecipient>? serviceRecipients,
     List<StoredInvoice>? invoices,
+    List<InvoiceChatDraft>? invoiceChatDrafts,
   }) => StoreSnapshot(
     version: version ?? this.version,
     cities: cities ?? this.cities,
     orderNames: orderNames ?? this.orderNames,
     serviceRecipients: serviceRecipients ?? this.serviceRecipients,
     invoices: invoices ?? this.invoices,
+    invoiceChatDrafts: invoiceChatDrafts ?? this.invoiceChatDrafts,
   );
 
   static List<String> _dedupeSorted(List<String> input) {
@@ -325,6 +338,161 @@ final class InvoicePdfFontSettings {
     noteFontSize,
     footerFontSize,
   );
+}
+
+final class InvoiceChatDraft {
+  InvoiceChatDraft({
+    required this.id,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.step,
+    required List<InvoiceLine> lines,
+    this.helpRequested = false,
+    this.selectedRecipientId,
+    this.manualRecipient = false,
+    this.recipientName = '',
+    this.recipientAddress = '',
+    this.recipientJib = '',
+    this.invoiceNumber = '',
+    DateTime? issueDate,
+    DateTime? currentLineDate,
+    this.route = '',
+    this.orderName = '',
+    this.amount = '',
+    this.storeOnline = true,
+  }) : issueDate = issueDate ?? _dateOnly(DateTime.now()),
+       currentLineDate =
+           currentLineDate ?? issueDate ?? _dateOnly(DateTime.now()),
+       lines = List.unmodifiable(lines);
+
+  final String id;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final bool helpRequested;
+  final String step;
+  final String? selectedRecipientId;
+  final bool manualRecipient;
+  final String recipientName;
+  final String recipientAddress;
+  final String recipientJib;
+  final String invoiceNumber;
+  final DateTime issueDate;
+  final DateTime currentLineDate;
+  final String route;
+  final String orderName;
+  final String amount;
+  final List<InvoiceLine> lines;
+  final bool storeOnline;
+
+  factory InvoiceChatDraft.fromJson(Map<String, dynamic> json) {
+    final now = DateTime.now();
+    final issueDate = _dateFromJson(json['issueDate'], fallback: now);
+    return InvoiceChatDraft(
+      id: json['id'] as String,
+      createdAt: _dateTimeFromJson(json['createdAt'], fallback: now),
+      updatedAt: _dateTimeFromJson(json['updatedAt'], fallback: now),
+      helpRequested: json['helpRequested'] as bool? ?? false,
+      step: json['step'] as String? ?? 'recipient',
+      selectedRecipientId: json['selectedRecipientId'] as String?,
+      manualRecipient: json['manualRecipient'] as bool? ?? false,
+      recipientName: json['recipientName'] as String? ?? '',
+      recipientAddress: json['recipientAddress'] as String? ?? '',
+      recipientJib: json['recipientJib'] as String? ?? '',
+      invoiceNumber: json['invoiceNumber'] as String? ?? '',
+      issueDate: issueDate,
+      currentLineDate: _dateFromJson(
+        json['currentLineDate'],
+        fallback: issueDate,
+      ),
+      route: json['route'] as String? ?? '',
+      orderName: json['orderName'] as String? ?? '',
+      amount: json['amount'] as String? ?? '',
+      lines: (json['lines'] as List<dynamic>? ?? [])
+          .map((e) => InvoiceLine.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      storeOnline: json['storeOnline'] as bool? ?? true,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'helpRequested': helpRequested,
+    'step': step,
+    if (selectedRecipientId != null) 'selectedRecipientId': selectedRecipientId,
+    'manualRecipient': manualRecipient,
+    if (recipientName.isNotEmpty) 'recipientName': recipientName,
+    if (recipientAddress.isNotEmpty) 'recipientAddress': recipientAddress,
+    if (recipientJib.isNotEmpty) 'recipientJib': recipientJib,
+    if (invoiceNumber.isNotEmpty) 'invoiceNumber': invoiceNumber,
+    'issueDate': issueDate.toIso8601String(),
+    'currentLineDate': currentLineDate.toIso8601String(),
+    if (route.isNotEmpty) 'route': route,
+    if (orderName.isNotEmpty) 'orderName': orderName,
+    if (amount.isNotEmpty) 'amount': amount,
+    'lines': lines.map((e) => e.toJson()).toList(),
+    'storeOnline': storeOnline,
+  };
+
+  InvoiceChatDraft copyWith({
+    DateTime? updatedAt,
+    bool? helpRequested,
+    String? step,
+    String? selectedRecipientId,
+    bool? manualRecipient,
+    String? recipientName,
+    String? recipientAddress,
+    String? recipientJib,
+    String? invoiceNumber,
+    DateTime? issueDate,
+    DateTime? currentLineDate,
+    String? route,
+    String? orderName,
+    String? amount,
+    List<InvoiceLine>? lines,
+    bool? storeOnline,
+    bool clearSelectedRecipientId = false,
+  }) {
+    return InvoiceChatDraft(
+      id: id,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      helpRequested: helpRequested ?? this.helpRequested,
+      step: step ?? this.step,
+      selectedRecipientId: clearSelectedRecipientId
+          ? null
+          : (selectedRecipientId ?? this.selectedRecipientId),
+      manualRecipient: manualRecipient ?? this.manualRecipient,
+      recipientName: recipientName ?? this.recipientName,
+      recipientAddress: recipientAddress ?? this.recipientAddress,
+      recipientJib: recipientJib ?? this.recipientJib,
+      invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+      issueDate: issueDate ?? this.issueDate,
+      currentLineDate: currentLineDate ?? this.currentLineDate,
+      route: route ?? this.route,
+      orderName: orderName ?? this.orderName,
+      amount: amount ?? this.amount,
+      lines: lines ?? this.lines,
+      storeOnline: storeOnline ?? this.storeOnline,
+    );
+  }
+}
+
+DateTime _dateFromJson(Object? raw, {required DateTime fallback}) {
+  final parsed = raw is String ? DateTime.tryParse(raw) : null;
+  if (parsed == null) {
+    return _dateOnly(fallback);
+  }
+  return _dateOnly(parsed);
+}
+
+DateTime _dateTimeFromJson(Object? raw, {required DateTime fallback}) {
+  return raw is String ? DateTime.tryParse(raw) ?? fallback : fallback;
+}
+
+DateTime _dateOnly(DateTime value) {
+  return DateTime(value.year, value.month, value.day);
 }
 
 final class StoredInvoice {

@@ -74,6 +74,23 @@ final class InvoiceStoreController extends ChangeNotifier {
     return list;
   }
 
+  List<InvoiceChatDraft> get invoiceChatDraftsSorted {
+    final list = List<InvoiceChatDraft>.from(_snapshot.invoiceChatDrafts);
+    list.sort((a, b) {
+      if (a.helpRequested != b.helpRequested) {
+        return a.helpRequested ? -1 : 1;
+      }
+      return b.updatedAt.compareTo(a.updatedAt);
+    });
+    return list;
+  }
+
+  List<InvoiceChatDraft> get helpRequestedInvoiceChatDrafts {
+    return invoiceChatDraftsSorted
+        .where((draft) => draft.helpRequested)
+        .toList();
+  }
+
   ServiceRecipient? recipientById(String id) {
     for (final r in _snapshot.serviceRecipients) {
       if (r.id == id) {
@@ -403,6 +420,25 @@ final class InvoiceStoreController extends ChangeNotifier {
     await _replaceSnapshot(
       _snapshot.copyWith(
         serviceRecipients: _snapshot.serviceRecipients
+            .where((e) => e.id != id)
+            .toList(),
+      ),
+    );
+  }
+
+  Future<void> upsertInvoiceChatDraft(InvoiceChatDraft draft) async {
+    final others = _snapshot.invoiceChatDrafts
+        .where((e) => e.id != draft.id)
+        .toList();
+    await _replaceSnapshot(
+      _snapshot.copyWith(invoiceChatDrafts: [...others, draft]),
+    );
+  }
+
+  Future<void> deleteInvoiceChatDraft(String id) async {
+    await _replaceSnapshot(
+      _snapshot.copyWith(
+        invoiceChatDrafts: _snapshot.invoiceChatDrafts
             .where((e) => e.id != id)
             .toList(),
       ),

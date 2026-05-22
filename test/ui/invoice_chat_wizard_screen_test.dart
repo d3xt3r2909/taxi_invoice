@@ -1,6 +1,8 @@
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
+import 'package:app_taxi_invoice/src/store/invoice_store_repository.dart';
+import 'package:app_taxi_invoice/src/store/invoice_store_text_storage.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_chat_wizard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -120,17 +122,59 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('request help saves the current draft', (tester) async {
+    final store = await _loadedStore();
+    await tester.pumpInvoiceChatWizard(store: store);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Naziv naručioca'),
+      'Zara',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Nastavi'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Pomoć'));
+    await tester.pumpAndSettle();
+
+    expect(store.helpRequestedInvoiceChatDrafts.single.recipientName, 'Zara');
+  });
+
+  testWidgets('restores an existing draft', (tester) async {
+    final draft = InvoiceChatDraft(
+      id: 'draft-1',
+      createdAt: DateTime(2026, 5, 1, 8),
+      updatedAt: DateTime(2026, 5, 1, 9),
+      helpRequested: true,
+      step: 'invoiceNumber',
+      recipientName: 'Zara',
+      invoiceNumber: '07/26',
+      issueDate: DateTime(2026, 5, 1),
+      lines: const [],
+    );
+
+    await tester.pumpInvoiceChatWizard(draft: draft);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Naručilac: Zara'), findsOneWidget);
+    expect(find.text('Koji je broj računa?'), findsOneWidget);
+  });
 }
 
 extension on WidgetTester {
-  Future<void> pumpInvoiceChatWizard() async {
+  Future<void> pumpInvoiceChatWizard({
+    InvoiceStoreController? store,
+    InvoiceChatDraft? draft,
+  }) async {
     await pumpWidget(
       MaterialApp(
         home: InvoiceChatWizardScreen(
-          store: InvoiceStoreController(
-            localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
-          ),
+          store:
+              store ??
+              InvoiceStoreController(
+                localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+              ),
           settings: AppSettingsController(),
+          draft: draft,
         ),
       ),
     );
@@ -161,6 +205,41 @@ extension on WidgetTester {
     await enterText(find.widgetWithText(TextField, 'Iznos (KM)'), '45');
     await tap(find.widgetWithText(FilledButton, 'Nastavi'));
     await pumpAndSettle();
+  }
+}
+
+Future<InvoiceStoreController> _loadedStore() async {
+  final controller = InvoiceStoreController(
+    repository: InvoiceStoreRepository(
+      storage: _MemoryInvoiceStoreTextStorage(
+        storeSnapshotToJsonString(StoreSnapshot.empty()),
+      ),
+    ),
+    localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+  );
+  await controller.load();
+  return controller;
+}
+
+final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
+  _MemoryInvoiceStoreTextStorage(this.text);
+
+  String text;
+
+  @override
+  Future<InvoiceStoreTextRead> read() async {
+    return InvoiceStoreTextRead(
+      text: text,
+      syncStatus: InvoiceStoreSyncStatus.online,
+    );
+  }
+
+  @override
+  Future<InvoiceStoreTextWrite> write(String text) async {
+    this.text = text;
+    return const InvoiceStoreTextWrite(
+      syncStatus: InvoiceStoreSyncStatus.online,
+    );
   }
 }
 

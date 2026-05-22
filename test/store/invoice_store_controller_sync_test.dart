@@ -304,6 +304,38 @@ void main() {
     );
   });
 
+  test('upsertInvoiceChatDraft stores help request drafts', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(StoreSnapshot.empty()),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+    );
+    await controller.load();
+
+    await controller.upsertInvoiceChatDraft(_draft());
+
+    expect(controller.helpRequestedInvoiceChatDrafts.single.id, 'draft-1');
+  });
+
+  test('deleteInvoiceChatDraft removes a draft', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(
+        StoreSnapshot.empty().copyWith(invoiceChatDrafts: [_draft()]),
+      ),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+    );
+    await controller.load();
+
+    await controller.deleteInvoiceChatDraft('draft-1');
+
+    expect(controller.invoiceChatDraftsSorted, isEmpty);
+  });
+
   test('setInvoicePdfLayoutPreset updates a local-only invoice', () async {
     final storage = _MemoryInvoiceStoreTextStorage(
       storeSnapshotToJsonString(StoreSnapshot.empty()),
@@ -372,6 +404,20 @@ InvoicePdfFontSettings _fontSettings() {
     totalFontSize: 12,
     noteFontSize: 8,
     footerFontSize: 8,
+  );
+}
+
+InvoiceChatDraft _draft() {
+  return InvoiceChatDraft(
+    id: 'draft-1',
+    createdAt: DateTime(2026, 5, 1, 8),
+    updatedAt: DateTime(2026, 5, 1, 9),
+    helpRequested: true,
+    step: 'route',
+    recipientName: 'Zara',
+    invoiceNumber: '07/26',
+    issueDate: DateTime(2026, 5, 1),
+    lines: const [],
   );
 }
 

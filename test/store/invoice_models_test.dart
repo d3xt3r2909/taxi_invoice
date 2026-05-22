@@ -47,6 +47,37 @@ void main() {
 
     expect(settings.tableFontSize, InvoicePdfFontSettings.minFontSize);
   });
+
+  test('store snapshot round trips invoice chat drafts', () {
+    final snapshot = StoreSnapshot.empty().copyWith(
+      invoiceChatDrafts: [
+        InvoiceChatDraft(
+          id: 'draft-1',
+          createdAt: DateTime(2026, 5, 1, 8),
+          updatedAt: DateTime(2026, 5, 1, 9),
+          helpRequested: true,
+          step: 'route',
+          recipientName: 'Zara',
+          invoiceNumber: '07/26',
+          issueDate: DateTime(2026, 5, 1),
+          lines: [
+            InvoiceLine(
+              datumRacuna: DateTime(2026, 5, 1),
+              putnaRelacija: 'Sarajevo - Mostar',
+              brojNarudzbe: 'Vožnja',
+              iznosKm: 42,
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final parsed = storeSnapshotFromJsonString(
+      storeSnapshotToJsonString(snapshot),
+    );
+
+    expect(parsed.invoiceChatDrafts.single.helpRequested, isTrue);
+  });
 }
 
 Map<String, dynamic> _invoiceJson() {

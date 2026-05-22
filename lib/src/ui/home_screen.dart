@@ -118,19 +118,23 @@ final class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _openAssistant() async {
+  Future<void> _openAssistant({InvoiceChatDraft? draft}) async {
     final invoiceCount = widget.store.invoicesSortedByIssueDate.length;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => InvoiceChatWizardScreen(
           store: widget.store,
           settings: widget.settings,
+          draft: draft,
         ),
       ),
     );
-    if (mounted &&
-        widget.store.invoicesSortedByIssueDate.length > invoiceCount) {
-      setState(() => _selectedRecipientFilter = null);
+    if (mounted) {
+      if (widget.store.invoicesSortedByIssueDate.length > invoiceCount) {
+        setState(() => _selectedRecipientFilter = null);
+      } else {
+        setState(() {});
+      }
     }
   }
 
@@ -184,6 +188,7 @@ final class _HomeScreenState extends State<HomeScreen> {
         ? _selectedRecipientFilter
         : null;
     final list = _filterInvoicesByRecipient(allInvoices, activeRecipientFilter);
+    final helpDrafts = store.helpRequestedInvoiceChatDrafts;
 
     return Scaffold(
       body: NotificationListener<UserScrollNotification>(
@@ -196,6 +201,14 @@ final class _HomeScreenState extends State<HomeScreen> {
               onOpenSettings: _openSettings,
             ),
             SliverToBoxAdapter(child: _StoreStatusBanner(store: store)),
+            if (helpDrafts.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _HelpRequestedDraftsSection(
+                  drafts: helpDrafts,
+                  onOpenDraft: (draft) => _openAssistant(draft: draft),
+                  onDeleteDraft: _deleteHelpDraft,
+                ),
+              ),
             if (allInvoices.isNotEmpty)
               SliverToBoxAdapter(
                 child: _InvoiceFilterBar(
@@ -258,6 +271,50 @@ final class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
     );
+  }
+
+  Future<void> _deleteHelpDraft(InvoiceChatDraft draft) async {
+    if (!widget.store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, widget.store);
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Obrisati nacrt?'),
+        content: Text(
+          'Nacrt „${_draftTitle(draft)}” će nestati iz pomoći. '
+          'Sačuvani računi se neće mijenjati.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Odustani'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Obriši'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) {
+      return;
+    }
+    try {
+      await widget.store.deleteInvoiceChatDraft(draft.id);
+    } catch (e) {
+      if (mounted) {
+        showInvoiceStoreMutationError(context, e);
+      }
+      return;
+    }
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Nacrt je obrisan.')));
+    }
   }
 }
 
@@ -363,6 +420,140 @@ final class _AssistantFabAvatar extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.cover,
+      ),
+    );
+  }
+}
+
+final class _HelpRequestedDraftsSection extends StatelessWidget {
+  const _HelpRequestedDraftsSection({
+    required this.drafts,
+    required this.onOpenDraft,
+    required this.onDeleteDraft,
+  });
+
+  final List<InvoiceChatDraft> drafts;
+  final ValueChanged<InvoiceChatDraft> onOpenDraft;
+  final ValueChanged<InvoiceChatDraft> onDeleteDraft;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.tertiaryContainer.withValues(alpha: 0.58),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: scheme.tertiary.withValues(alpha: 0.34)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.support_agent, color: scheme.onTertiaryContainer),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Pomoć potrebna',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        color: scheme.onTertiaryContainer,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              for (final draft in drafts) ...[
+                _HelpRequestedDraftTile(
+                  draft: draft,
+                  onTap: () => onOpenDraft(draft),
+                  onDelete: () => onDeleteDraft(draft),
+                ),
+                if (draft != drafts.last) const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _HelpRequestedDraftTile extends StatelessWidget {
+  const _HelpRequestedDraftTile({
+    required this.draft,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final InvoiceChatDraft draft;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Material(
+      color: scheme.surface,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _draftTitle(draft),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${_draftStepLabel(draft.step)} · '
+                      'Ažurirano ${formatInvoiceDateMedium(draft.updatedAt)}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Obriši nacrt',
+              ),
+              const SizedBox(width: 4),
+              FilledButton.tonalIcon(
+                onPressed: onTap,
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Otvori'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 42),
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -625,6 +816,33 @@ String _emptyFilterMessage(String? recipient) {
     return 'Nema sačuvanih računa.';
   }
   return 'Nema računa za „$selected”.\n\nPritisnite „Svi” za cijelu listu.';
+}
+
+String _draftTitle(InvoiceChatDraft draft) {
+  final recipient = draft.recipientName.trim();
+  if (recipient.isNotEmpty) {
+    return recipient;
+  }
+  final number = draft.invoiceNumber.trim();
+  if (number.isNotEmpty) {
+    return 'Nacrt računa $number';
+  }
+  return 'Nedovršen račun';
+}
+
+String _draftStepLabel(String step) {
+  return switch (step) {
+    'recipient' => 'Naručilac',
+    'invoiceNumber' => 'Broj računa',
+    'issueDate' => 'Datum računa',
+    'lineDate' => 'Datum vožnje',
+    'route' => 'Relacija',
+    'orderName' => 'Narudžba / ime',
+    'amount' => 'Iznos',
+    'moreLines' => 'Stavke',
+    'summary' => 'Potvrda',
+    _ => 'Nacrt',
+  };
 }
 
 final class _InvoiceFilterBar extends StatelessWidget {

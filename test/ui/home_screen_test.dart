@@ -232,15 +232,76 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('shows help requested drafts on home screen', (tester) async {
+    await initializeDateFormatting('bs_BA');
+    final store = await _loadedStore(
+      invoices: [],
+      invoiceChatDrafts: [
+        InvoiceChatDraft(
+          id: 'draft-1',
+          createdAt: DateTime(2026, 5, 1, 8),
+          updatedAt: DateTime(2026, 5, 1, 9),
+          helpRequested: true,
+          step: 'route',
+          recipientName: 'Zara',
+          issueDate: DateTime(2026, 5, 1),
+          lines: const [],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          store: store,
+          settings: AppSettingsController(),
+          auth: AppAuthController.notConfigured(),
+        ),
+      ),
+    );
+
+    expect(find.text('Pomoć potrebna'), findsOneWidget);
+    expect(find.text('Zara'), findsOneWidget);
+  });
+
+  testWidgets('deletes help requested draft from home screen', (tester) async {
+    await initializeDateFormatting('bs_BA');
+    final store = await _loadedStore(
+      invoices: [],
+      invoiceChatDrafts: [_draft()],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          store: store,
+          settings: AppSettingsController(),
+          auth: AppAuthController.notConfigured(),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Obriši nacrt'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Obriši'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pomoć potrebna'), findsNothing);
+  });
 }
 
 Future<InvoiceStoreController> _loadedStore({
   required List<StoredInvoice> invoices,
   List<StoredInvoice> localOnlyInvoices = const [],
+  List<InvoiceChatDraft> invoiceChatDrafts = const [],
 }) async {
   final storage = _MemoryInvoiceStoreTextStorage(
     storeSnapshotToJsonString(
-      StoreSnapshot.empty().copyWith(invoices: invoices),
+      StoreSnapshot.empty().copyWith(
+        invoices: invoices,
+        invoiceChatDrafts: invoiceChatDrafts,
+      ),
     ),
   );
   final controller = InvoiceStoreController(
@@ -277,10 +338,23 @@ StoredInvoice _invoice({
   );
 }
 
-final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
-  const _MemoryInvoiceStoreTextStorage(this.text);
+InvoiceChatDraft _draft() {
+  return InvoiceChatDraft(
+    id: 'draft-1',
+    createdAt: DateTime(2026, 5, 1, 8),
+    updatedAt: DateTime(2026, 5, 1, 9),
+    helpRequested: true,
+    step: 'route',
+    recipientName: 'Zara',
+    issueDate: DateTime(2026, 5, 1),
+    lines: const [],
+  );
+}
 
-  final String text;
+final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
+  _MemoryInvoiceStoreTextStorage(this.text);
+
+  String text;
 
   @override
   Future<InvoiceStoreTextRead> read() async {
@@ -292,6 +366,7 @@ final class _MemoryInvoiceStoreTextStorage implements InvoiceStoreTextStorage {
 
   @override
   Future<InvoiceStoreTextWrite> write(String text) async {
+    this.text = text;
     return const InvoiceStoreTextWrite(
       syncStatus: InvoiceStoreSyncStatus.online,
     );
