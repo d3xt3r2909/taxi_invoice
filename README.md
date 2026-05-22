@@ -18,5 +18,9 @@ The workflow builds Flutter web with the repository base path:
 flutter build web --release --base-href "/taxi_invoice/"
 ```
 
+During deploy, the workflow passes app build metadata into Flutter. The visible
+version in Settings is `pubspec.yaml` version name plus the increasing GitHub
+Actions run number, for example `1.0.0+123`.
+
 On the first deploy, make sure repository Settings > Pages uses GitHub Actions
 as the publishing source.

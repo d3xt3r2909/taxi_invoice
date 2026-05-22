@@ -64,6 +64,27 @@ jobs:
           done
           exit "$missing"
 
+      - name: Resolve app version
+        id: app_version
+        run: |
+          set -euo pipefail
+          pubspec_version="$(sed -n 's/^version: *//p' pubspec.yaml | head -n 1)"
+          if [ -z "$pubspec_version" ]; then
+            echo "::error::pubspec.yaml version is missing"
+            exit 1
+          fi
+          version_name="${pubspec_version%%+*}"
+          build_number="${GITHUB_RUN_NUMBER}"
+          commit_sha="${GITHUB_SHA::7}"
+          built_at="$(date -u '+%Y-%m-%d %H:%M UTC')"
+
+          echo "version_name=$version_name" >> "$GITHUB_OUTPUT"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+          echo "built_at=$built_at" >> "$GITHUB_OUTPUT"
+
+          echo "Building app version ${version_name}+${build_number} (${commit_sha})"
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
@@ -75,15 +96,25 @@ jobs:
           FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
           FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
           FIREBASE_WEB_APP_ID: ${{ secrets.FIREBASE_WEB_APP_ID }}
+          APP_VERSION_NAME: ${{ steps.app_version.outputs.version_name }}
+          APP_BUILD_NUMBER: ${{ steps.app_version.outputs.build_number }}
+          APP_COMMIT_SHA: ${{ steps.app_version.outputs.commit_sha }}
+          APP_BUILT_AT: ${{ steps.app_version.outputs.built_at }}
         run: |
           flutter build web --release \
+            --build-name="$APP_VERSION_NAME" \
+            --build-number="$APP_BUILD_NUMBER" \
             --base-href "/${{ github.event.repository.name }}/" \
             --dart-define=FIREBASE_API_KEY="$FIREBASE_API_KEY" \
             --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
             --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
             --dart-define=FIREBASE_DATABASE_URL="$FIREBASE_DATABASE_URL" \
             --dart-define=FIREBASE_AUTH_DOMAIN="$FIREBASE_AUTH_DOMAIN" \
-            --dart-define=FIREBASE_WEB_APP_ID="$FIREBASE_WEB_APP_ID"
+            --dart-define=FIREBASE_WEB_APP_ID="$FIREBASE_WEB_APP_ID" \
+            --dart-define=APP_VERSION_NAME="$APP_VERSION_NAME" \
+            --dart-define=APP_BUILD_NUMBER="$APP_BUILD_NUMBER" \
+            --dart-define=APP_COMMIT_SHA="$APP_COMMIT_SHA" \
+            --dart-define=APP_BUILT_AT="$APP_BUILT_AT"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4

@@ -30,4 +30,24 @@ void main() {
 
     expect(find.text('Podaci i sigurnosna kopija'), findsOneWidget);
   });
+
+  testWidgets('shows the current app version', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settings: AppSettingsController(),
+          store: InvoiceStoreController(),
+          auth: AppAuthController.notConfigured(),
+        ),
+      ),
+    );
+
+    await tester.dragUntilVisible(
+      find.text('Verzija aplikacije'),
+      find.byType(CustomScrollView),
+      const Offset(0, -500),
+    );
+
+    expect(find.text('1.0.0+1'), findsOneWidget);
+  });
 }

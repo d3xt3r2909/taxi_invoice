@@ -5,6 +5,7 @@ import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_encryption.dart';
 import 'package:app_taxi_invoice/src/ui/import_export_sheet.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
+import 'package:app_taxi_invoice/src/util/app_build_info.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -255,6 +256,21 @@ final class SettingsScreen extends StatelessWidget {
                             icon: const Icon(Icons.import_export, size: 24),
                             label: const Text('Uvoz i izvoz podataka'),
                           ),
+                        ),
+                      ],
+                    ),
+                    const _SettingsDivider(),
+                    _SettingsSection(
+                      icon: Icons.info_outline,
+                      title: 'O aplikaciji',
+                      description:
+                          'Verzija koja je trenutno otvorena na ovom uređaju.',
+                      children: [
+                        _SettingsInfoTile(
+                          icon: Icons.new_releases_outlined,
+                          title: 'Verzija aplikacije',
+                          subtitle: AppBuildInfo.current.settingsSubtitle,
+                          selectableSubtitle: true,
                         ),
                       ],
                     ),
