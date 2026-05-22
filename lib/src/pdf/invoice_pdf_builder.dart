@@ -197,7 +197,7 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                 ),
               ],
             ),
-            if (layout.useFlexiblePageSpacing)
+            if (layout.useFlexibleHeaderSpacing)
               pw.Spacer()
             else
               pw.SizedBox(height: layout.headerToTitleGap),
@@ -315,11 +315,9 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                 style: ts(size: fontSettings.noteFontSize),
               ),
             ),
-            // Fill remaining page height so the footer sits at the bottom of the sheet.
-            if (layout.useFlexiblePageSpacing)
-              pw.Spacer()
-            else
-              pw.SizedBox(height: layout.totalToFooterGap),
+            // Keep the issuing date, stamp placeholder, and provider footer at
+            // the bottom whenever the invoice content still fits on one page.
+            pw.Spacer(),
             pw.SizedBox(height: layout.footerGap),
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -412,11 +410,10 @@ final class _InvoicePdfLayout {
     required this.titleToTableGap,
     required this.tableToTotalGap,
     required this.totalToVatGap,
-    required this.totalToFooterGap,
     required this.footerGap,
     required this.tableCellHorizontal,
     required this.tableCellVertical,
-    required this.useFlexiblePageSpacing,
+    required this.useFlexibleHeaderSpacing,
   });
 
   final double margin;
@@ -429,11 +426,10 @@ final class _InvoicePdfLayout {
   final double titleToTableGap;
   final double tableToTotalGap;
   final double totalToVatGap;
-  final double totalToFooterGap;
   final double footerGap;
   final double tableCellHorizontal;
   final double tableCellVertical;
-  final bool useFlexiblePageSpacing;
+  final bool useFlexibleHeaderSpacing;
 
   static _InvoicePdfLayout forPreset(InvoicePdfLayoutPreset preset) {
     return switch (preset) {
@@ -448,11 +444,10 @@ final class _InvoicePdfLayout {
         titleToTableGap: 48,
         tableToTotalGap: 48,
         totalToVatGap: 24,
-        totalToFooterGap: 0,
         footerGap: 12,
         tableCellHorizontal: 4,
         tableCellVertical: 8,
-        useFlexiblePageSpacing: true,
+        useFlexibleHeaderSpacing: true,
       ),
       InvoicePdfLayoutPreset.compact => const _InvoicePdfLayout(
         margin: 38,
@@ -465,11 +460,10 @@ final class _InvoicePdfLayout {
         titleToTableGap: 30,
         tableToTotalGap: 28,
         totalToVatGap: 14,
-        totalToFooterGap: 16,
         footerGap: 8,
         tableCellHorizontal: 3,
         tableCellVertical: 5,
-        useFlexiblePageSpacing: false,
+        useFlexibleHeaderSpacing: false,
       ),
       InvoicePdfLayoutPreset.dense => const _InvoicePdfLayout(
         margin: 30,
@@ -482,11 +476,10 @@ final class _InvoicePdfLayout {
         titleToTableGap: 18,
         tableToTotalGap: 14,
         totalToVatGap: 8,
-        totalToFooterGap: 10,
         footerGap: 6,
         tableCellHorizontal: 2,
         tableCellVertical: 3,
-        useFlexiblePageSpacing: false,
+        useFlexibleHeaderSpacing: false,
       ),
     };
   }
