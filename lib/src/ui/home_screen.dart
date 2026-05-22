@@ -16,6 +16,8 @@ import 'package:app_taxi_invoice/src/ui/settings_screen.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
 import 'package:flutter/material.dart';
 
+const _homeHeaderAsset = 'assets/branding/home_header.png';
+
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.store,
@@ -90,6 +92,28 @@ final class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _openServiceRecipients() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ServiceRecipientsListScreen(store: widget.store),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(
+          settings: widget.settings,
+          store: widget.store,
+          auth: widget.auth,
+          userAccess: widget.userAccess,
+          encryption: widget.encryption,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = widget.store;
@@ -101,108 +125,62 @@ final class _HomeScreenState extends State<HomeScreen> {
     final list = _filterInvoices(allInvoices, _filter, DateTime.now());
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Računi',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.groups_outlined, size: 26),
-            tooltip: 'Naručioci usluga',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => ServiceRecipientsListScreen(store: store),
-                ),
-              );
-            },
+      body: CustomScrollView(
+        slivers: [
+          _HomeSliverAppBar(
+            onOpenRecipients: _openServiceRecipients,
+            onOpenSettings: _openSettings,
           ),
-          IconButton(
-            icon: const Icon(Icons.settings, size: 26),
-            tooltip: 'Postavke',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => SettingsScreen(
-                    settings: widget.settings,
-                    store: widget.store,
-                    auth: widget.auth,
-                    userAccess: widget.userAccess,
-                    encryption: widget.encryption,
-                  ),
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _StoreStatusBanner(store: store),
+          SliverToBoxAdapter(child: _StoreStatusBanner(store: store)),
           if (allInvoices.isNotEmpty)
-            _InvoiceFilterBar(
-              selected: _filter,
-              onSelected: (filter) => setState(() => _filter = filter),
+            SliverToBoxAdapter(
+              child: _InvoiceFilterBar(
+                selected: _filter,
+                onSelected: (filter) => setState(() => _filter = filter),
+              ),
             ),
-          Expanded(
-            child: allInvoices.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'Nema sačuvanih računa.\n\nNajlakše je početi preko '
-                        'dugmeta „Pomoćnik za račun” dolje.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontSize: 18,
-                          height: 1.5,
+          if (allInvoices.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: _HomeEmptyState(
+                message:
+                    'Nema sačuvanih računa.\n\nNajlakše je početi preko '
+                    'dugmeta „Pomoćnik za račun” dolje.',
+              ),
+            )
+          else if (list.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _HomeEmptyState(message: _emptyFilterMessage(_filter)),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.all(16),
+              sliver: SliverList.builder(
+                itemCount: list.length,
+                itemBuilder: (context, index) {
+                  final inv = list[index];
+                  return _InvoiceListItem(
+                    invoice: inv,
+                    onOpen: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => InvoiceDetailScreen(
+                            store: store,
+                            settings: widget.settings,
+                            invoice: inv,
+                          ),
                         ),
-                      ),
-                    ),
-                  )
-                : list.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        _emptyFilterMessage(_filter),
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontSize: 18,
-                          height: 1.5,
-                        ),
-                      ),
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: list.length,
-                    itemBuilder: (context, index) {
-                      final inv = list[index];
-                      return _InvoiceListItem(
-                        invoice: inv,
-                        onOpen: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => InvoiceDetailScreen(
-                                store: store,
-                                settings: widget.settings,
-                                invoice: inv,
-                              ),
-                            ),
-                          );
-                        },
-                        onPreviewPdf: () => _previewPdf(context, inv),
-                        storedOnline: store.isInvoiceStoredOnline(inv.id),
-                        canSaveOnline: store.canWrite,
-                        onSaveOnline: () => _saveInvoiceOnline(context, inv),
                       );
                     },
-                  ),
-          ),
+                    onPreviewPdf: () => _previewPdf(context, inv),
+                    storedOnline: store.isInvoiceStoredOnline(inv.id),
+                    canSaveOnline: store.canWrite,
+                    onSaveOnline: () => _saveInvoiceOnline(context, inv),
+                  );
+                },
+              ),
+            ),
         ],
       ),
       bottomNavigationBar: _InvoiceCreateActions(
@@ -216,6 +194,203 @@ final class _HomeScreenState extends State<HomeScreen> {
 }
 
 enum _InvoiceHomeFilter { currentMonth, previousMonth, all }
+
+final class _HomeSliverAppBar extends StatelessWidget {
+  const _HomeSliverAppBar({
+    required this.onOpenRecipients,
+    required this.onOpenSettings,
+  });
+
+  final VoidCallback onOpenRecipients;
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final topPadding = MediaQuery.paddingOf(context).top;
+    final toolbarHeight = _homeToolbarHeight(context);
+    final collapsedHeight = topPadding + toolbarHeight;
+    final expandedHeight =
+        collapsedHeight + (size.width * 0.24).clamp(112.0, 188.0).toDouble();
+    final scheme = Theme.of(context).colorScheme;
+    return SliverAppBar(
+      automaticallyImplyLeading: false,
+      pinned: true,
+      toolbarHeight: toolbarHeight,
+      expandedHeight: expandedHeight,
+      backgroundColor: scheme.surface,
+      surfaceTintColor: scheme.surfaceTint,
+      elevation: 0,
+      scrolledUnderElevation: 2,
+      flexibleSpace: LayoutBuilder(
+        builder: (context, constraints) {
+          final currentHeight = constraints.biggest.height;
+          final rawProgress =
+              (currentHeight - collapsedHeight) /
+              (expandedHeight - collapsedHeight);
+          final progress = rawProgress.clamp(0.0, 1.0);
+          final imageProgress = Curves.easeOut.transform(progress);
+          final onImage = Curves.easeOutCubic.transform(
+            ((progress - 0.12) / 0.88).clamp(0.0, 1.0),
+          );
+          final foregroundColor = Color.lerp(
+            scheme.onSurface,
+            Colors.white,
+            onImage,
+          )!;
+          final buttonBackground = Color.lerp(
+            scheme.surfaceContainerHighest.withValues(alpha: 0.86),
+            Colors.black.withValues(alpha: 0.34),
+            onImage,
+          )!;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: scheme.surface),
+              Opacity(
+                opacity: imageProgress,
+                child: Semantics(
+                  image: true,
+                  label: 'Taxi Invoice',
+                  child: Image.asset(
+                    _homeHeaderAsset,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              ),
+              Opacity(
+                opacity: imageProgress,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x99000000),
+                        Color(0x33000000),
+                        Color(0x66000000),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SafeArea(
+                  top: false,
+                  bottom: false,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: toolbarHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 8, 12, 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Računi',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(
+                                    color: foregroundColor,
+                                    fontWeight: FontWeight.w800,
+                                    shadows: imageProgress > 0.2
+                                        ? const [
+                                            Shadow(
+                                              blurRadius: 12,
+                                              color: Color(0xAA000000),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          _HomeHeaderAction(
+                            tooltip: 'Naručioci usluga',
+                            icon: Icons.groups_outlined,
+                            foregroundColor: foregroundColor,
+                            backgroundColor: buttonBackground,
+                            onPressed: onOpenRecipients,
+                          ),
+                          const SizedBox(width: 4),
+                          _HomeHeaderAction(
+                            tooltip: 'Postavke',
+                            icon: Icons.settings,
+                            foregroundColor: foregroundColor,
+                            backgroundColor: buttonBackground,
+                            onPressed: onOpenSettings,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+double _homeToolbarHeight(BuildContext context) {
+  return MediaQuery.textScalerOf(context).scale(64).clamp(64.0, 88.0);
+}
+
+final class _HomeHeaderAction extends StatelessWidget {
+  const _HomeHeaderAction({
+    required this.tooltip,
+    required this.icon,
+    required this.foregroundColor,
+    required this.backgroundColor,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final Color foregroundColor;
+  final Color backgroundColor;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, size: 26),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        backgroundColor: backgroundColor,
+        foregroundColor: foregroundColor,
+      ),
+    );
+  }
+}
+
+final class _HomeEmptyState extends StatelessWidget {
+  const _HomeEmptyState({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(fontSize: 18, height: 1.5),
+        ),
+      ),
+    );
+  }
+}
 
 List<StoredInvoice> _filterInvoices(
   List<StoredInvoice> invoices,
@@ -627,6 +802,7 @@ final class _StoreStatusBanner extends StatelessWidget {
           ? scheme.errorContainer
           : scheme.surfaceContainerHighest.withValues(alpha: 0.62),
       child: SafeArea(
+        top: false,
         bottom: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),

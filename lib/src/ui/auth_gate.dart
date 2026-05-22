@@ -7,6 +7,9 @@ import 'package:app_taxi_invoice/src/store/invoice_store_encryption.dart';
 import 'package:app_taxi_invoice/src/ui/home_screen.dart';
 import 'package:flutter/material.dart';
 
+const _loginHeroAsset = 'assets/branding/login_hero.png';
+const _loginPanelBackgroundAsset = 'assets/branding/login_background_panel.png';
+
 final class AuthGate extends StatefulWidget {
   const AuthGate({
     required this.auth,
@@ -520,112 +523,203 @@ final class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final signingIn = widget.auth.status == AppAuthStatus.signingIn;
     return Scaffold(
-      appBar: AppBar(title: const Text('Prijava')),
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.all(24),
-            children: [
-              Text(
-                'Prijavite se Google računom ili email adresom koja je odobrena za aplikaciju.',
-                style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
-              ),
-              const SizedBox(height: 18),
-              OutlinedButton.icon(
-                onPressed: signingIn ? null : _submitGoogle,
-                icon: _activeMethod == _LoginMethod.google
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const _GoogleMark(),
-                label: const Text('Prijava Google računom'),
-              ),
-              const SizedBox(height: 8),
-              CheckboxListTile(
-                value: _rememberMe,
-                onChanged: signingIn
-                    ? null
-                    : (value) {
-                        setState(() => _rememberMe = value ?? true);
-                      },
-                title: const Text('Zapamti prijavu'),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  const Expanded(child: Divider()),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text(
-                      'ili',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final form = _loginForm(context, signingIn);
+          if (constraints.maxWidth >= 760) {
+            return Row(
+              children: [
+                const Expanded(flex: 6, child: _LoginHeroPanel()),
+                Expanded(
+                  flex: 4,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(36),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: form,
                       ),
                     ),
-                  ),
-                  const Expanded(child: Divider()),
-                ],
-              ),
-              const SizedBox(height: 18),
-              AutofillGroup(
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _password,
-                      obscureText: true,
-                      autofillHints: const [AutofillHints.password],
-                      onSubmitted: (_) {
-                        if (!signingIn) {
-                          _submit();
-                        }
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Lozinka',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (widget.auth.errorMessage != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  widget.auth.errorMessage!,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.error,
-                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
-              const SizedBox(height: 18),
-              FilledButton(
-                onPressed: signingIn ? null : _submit,
-                child: _activeMethod == _LoginMethod.email
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Prijava emailom'),
+            );
+          }
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+                children: [
+                  _LoginHeroImage(
+                    height: (constraints.maxWidth * 0.72)
+                        .clamp(230.0, 340.0)
+                        .toDouble(),
+                  ),
+                  const SizedBox(height: 18),
+                  form,
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _loginForm(BuildContext context, bool signingIn) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Prijavite se Google računom ili email adresom koja je odobrena za aplikaciju.',
+          style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
+        ),
+        const SizedBox(height: 18),
+        OutlinedButton.icon(
+          onPressed: signingIn ? null : _submitGoogle,
+          icon: _activeMethod == _LoginMethod.google
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const _GoogleMark(),
+          label: const Text('Prijava Google računom'),
+        ),
+        const SizedBox(height: 8),
+        CheckboxListTile(
+          value: _rememberMe,
+          onChanged: signingIn
+              ? null
+              : (value) {
+                  setState(() => _rememberMe = value ?? true);
+                },
+          title: const Text('Zapamti prijavu'),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+        ),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            const Expanded(child: Divider()),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                'ili',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const Expanded(child: Divider()),
+          ],
+        ),
+        const SizedBox(height: 18),
+        AutofillGroup(
+          child: Column(
+            children: [
+              TextField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                autofillHints: const [AutofillHints.password],
+                onSubmitted: (_) {
+                  if (!signingIn) {
+                    _submit();
+                  }
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Lozinka',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ],
+          ),
+        ),
+        if (widget.auth.errorMessage != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            widget.auth.errorMessage!,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        const SizedBox(height: 18),
+        FilledButton(
+          onPressed: signingIn ? null : _submit,
+          child: _activeMethod == _LoginMethod.email
+              ? const SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Prijava emailom'),
+        ),
+      ],
+    );
+  }
+}
+
+enum _LoginMethod { email, google }
+
+final class _LoginHeroPanel extends StatelessWidget {
+  const _LoginHeroPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      image: true,
+      label: 'Taxi Invoice',
+      child: ColoredBox(
+        color: scheme.surface,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: scheme.surfaceContainerHighest),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.asset(
+                    _loginPanelBackgroundAsset,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    color: Colors.black.withAlpha(80),
+                    colorBlendMode: BlendMode.darken,
+                  ),
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(32),
+                        child: Image.asset(
+                          _loginHeroAsset,
+                          fit: BoxFit.contain,
+                          alignment: Alignment.center,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -633,7 +727,51 @@ final class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-enum _LoginMethod { email, google }
+final class _LoginHeroImage extends StatelessWidget {
+  const _LoginHeroImage({required this.height});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Semantics(
+        image: true,
+        label: 'Taxi Invoice',
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: SizedBox(
+            width: double.infinity,
+            height: height,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  _loginPanelBackgroundAsset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  color: Colors.black.withAlpha(64),
+                  colorBlendMode: BlendMode.darken,
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.asset(
+                      _loginHeroAsset,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.topCenter,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 final class _GoogleMark extends StatelessWidget {
   const _GoogleMark();

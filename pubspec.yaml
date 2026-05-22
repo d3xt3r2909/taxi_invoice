@@ -40,5 +40,8 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/branding/home_header.png
+    - assets/branding/login_background_panel.png
+    - assets/branding/login_hero.png
     - assets/fonts/NotoSerif-Regular.ttf
     - assets/fonts/NotoSerif-Bold.ttf
