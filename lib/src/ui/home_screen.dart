@@ -68,6 +68,7 @@ final class _HomeScreenState extends State<HomeScreen> {
       context: context,
       store: store,
       invoiceNumber: invoice.invoiceNumber,
+      recipientName: invoice.recipientName,
       existingInvoiceId: invoice.id,
       onlineOnly: true,
     );

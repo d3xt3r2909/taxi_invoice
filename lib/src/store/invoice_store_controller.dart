@@ -99,6 +99,32 @@ final class InvoiceStoreController extends ChangeNotifier {
     );
   }
 
+  bool hasInvoiceNumberForRecipient(
+    String invoiceNumber, {
+    required String recipientName,
+    String? exceptInvoiceId,
+  }) {
+    return _hasInvoiceNumberForRecipientIn(
+      [..._snapshot.invoices, ..._localOnlySnapshot.invoices],
+      invoiceNumber,
+      recipientName: recipientName,
+      exceptInvoiceId: exceptInvoiceId,
+    );
+  }
+
+  bool hasOnlineInvoiceNumberForRecipient(
+    String invoiceNumber, {
+    required String recipientName,
+    String? exceptInvoiceId,
+  }) {
+    return _hasInvoiceNumberForRecipientIn(
+      _snapshot.invoices,
+      invoiceNumber,
+      recipientName: recipientName,
+      exceptInvoiceId: exceptInvoiceId,
+    );
+  }
+
   bool isInvoiceStoredOnline(String id) {
     return !_localOnlySnapshot.invoices.any((invoice) => invoice.id == id);
   }
@@ -129,6 +155,25 @@ final class InvoiceStoreController extends ChangeNotifier {
     return invoices.any((invoice) {
       return invoice.id != exceptInvoiceId &&
           invoice.invoiceNumber.trim().toLowerCase() == normalized;
+    });
+  }
+
+  bool _hasInvoiceNumberForRecipientIn(
+    List<StoredInvoice> invoices,
+    String invoiceNumber, {
+    required String recipientName,
+    String? exceptInvoiceId,
+  }) {
+    final normalizedNumber = invoiceNumber.trim().toLowerCase();
+    final normalizedRecipient = _normalizeRecipientField(recipientName);
+    if (normalizedNumber.isEmpty || normalizedRecipient.isEmpty) {
+      return false;
+    }
+    return invoices.any((invoice) {
+      return invoice.id != exceptInvoiceId &&
+          invoice.invoiceNumber.trim().toLowerCase() == normalizedNumber &&
+          _normalizeRecipientField(invoice.recipientName) ==
+              normalizedRecipient;
     });
   }
 

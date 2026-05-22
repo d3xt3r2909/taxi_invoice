@@ -115,6 +115,55 @@ void main() {
     expect(controller.hasInvoiceNumber(' 1/26 '), isTrue);
   });
 
+  test(
+    'hasInvoiceNumberForRecipient detects same recipient duplicate',
+    () async {
+      final storage = _MemoryInvoiceStoreTextStorage(
+        storeSnapshotToJsonString(
+          StoreSnapshot.empty().copyWith(
+            invoices: [_invoice(recipientName: 'Zara')],
+          ),
+        ),
+      );
+      final controller = InvoiceStoreController(
+        repository: InvoiceStoreRepository(storage: storage),
+        localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+      );
+      await controller.load();
+
+      expect(
+        controller.hasInvoiceNumberForRecipient(
+          ' 1/26 ',
+          recipientName: ' zara ',
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test('hasInvoiceNumberForRecipient allows a different recipient', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(
+        StoreSnapshot.empty().copyWith(
+          invoices: [_invoice(recipientName: 'Zara')],
+        ),
+      ),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+    );
+    await controller.load();
+
+    expect(
+      controller.hasInvoiceNumberForRecipient(
+        '1/26',
+        recipientName: 'Drugi naručilac',
+      ),
+      isFalse,
+    );
+  });
+
   test('isSaving is true while a cloud save is in flight', () async {
     final writeGate = Completer<void>();
     final storage = _MemoryInvoiceStoreTextStorage(
@@ -191,14 +240,18 @@ void main() {
   });
 }
 
-StoredInvoice _invoice({String? recipientId}) {
+StoredInvoice _invoice({String? recipientId, String recipientName = ''}) {
   return StoredInvoice(
     id: 'invoice-1',
     invoiceNumber: '1/26',
     issueDate: DateTime(2026, 1, 1),
     createdAt: DateTime(2026, 1, 1),
     recipientId: recipientId,
-    recipientName: recipientId == null ? '' : 'Firma d.o.o.',
+    recipientName: recipientName.isNotEmpty
+        ? recipientName
+        : recipientId == null
+        ? ''
+        : 'Firma d.o.o.',
     recipientAddress: recipientId == null ? '' : 'Adresa 1',
     recipientJib: recipientId == null ? '' : '123',
     lines: [

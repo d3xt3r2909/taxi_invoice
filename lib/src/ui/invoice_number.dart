@@ -72,16 +72,19 @@ Future<bool> confirmDuplicateInvoiceNumberIfNeeded({
   required BuildContext context,
   required InvoiceStoreController store,
   required String invoiceNumber,
+  required String recipientName,
   String? existingInvoiceId,
   bool onlineOnly = false,
 }) async {
   final duplicate = onlineOnly
-      ? store.hasOnlineInvoiceNumber(
+      ? store.hasOnlineInvoiceNumberForRecipient(
           invoiceNumber,
+          recipientName: recipientName,
           exceptInvoiceId: existingInvoiceId,
         )
-      : store.hasInvoiceNumber(
+      : store.hasInvoiceNumberForRecipient(
           invoiceNumber,
+          recipientName: recipientName,
           exceptInvoiceId: existingInvoiceId,
         );
   if (!duplicate) {
@@ -93,9 +96,10 @@ Future<bool> confirmDuplicateInvoiceNumberIfNeeded({
       return AlertDialog(
         title: const Text('Broj računa već postoji'),
         content: Text(
-          'Već postoji račun sa brojem $invoiceNumber.\n\n'
-          'Provjerite mjesec i godinu prije čuvanja. Dva računa sa istim '
-          'brojem mogu napraviti zabunu kasnije.',
+          'Već postoji račun za naručioca ${recipientName.trim()} sa brojem '
+          '$invoiceNumber.\n\n'
+          'Provjerite mjesec, godinu i naručioca prije čuvanja. Dva takva '
+          'računa mogu napraviti zabunu kasnije.',
         ),
         actions: [
           TextButton(

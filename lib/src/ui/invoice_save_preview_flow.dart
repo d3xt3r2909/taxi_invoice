@@ -34,6 +34,7 @@ Future<InvoiceSavePostAction?> saveInvoiceAndOpenPdfPreview({
     context: context,
     store: store,
     invoiceNumber: invoice.invoiceNumber,
+    recipientName: invoice.recipientName,
     existingInvoiceId: invoice.id,
   );
   if (!context.mounted || !canSaveDuplicate) {
