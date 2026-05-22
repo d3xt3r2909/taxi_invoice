@@ -360,6 +360,11 @@ final class InvoiceChatDraft {
     this.orderName = '',
     this.amount = '',
     this.storeOnline = true,
+    this.noteImageId = '',
+    this.noteImageBase64 = '',
+    this.noteImageMimeType = '',
+    this.noteImageName = '',
+    this.noteImageRotationTurns = 0,
   }) : issueDate = issueDate ?? _dateOnly(DateTime.now()),
        currentLineDate =
            currentLineDate ?? issueDate ?? _dateOnly(DateTime.now()),
@@ -383,6 +388,14 @@ final class InvoiceChatDraft {
   final String amount;
   final List<InvoiceLine> lines;
   final bool storeOnline;
+  final String noteImageId;
+
+  /// Legacy inline image payload. New drafts store image bytes in local image
+  /// storage and keep only [noteImageId] in the shared JSON.
+  final String noteImageBase64;
+  final String noteImageMimeType;
+  final String noteImageName;
+  final int noteImageRotationTurns;
 
   factory InvoiceChatDraft.fromJson(Map<String, dynamic> json) {
     final now = DateTime.now();
@@ -411,6 +424,13 @@ final class InvoiceChatDraft {
           .map((e) => InvoiceLine.fromJson(e as Map<String, dynamic>))
           .toList(),
       storeOnline: json['storeOnline'] as bool? ?? true,
+      noteImageId: json['noteImageId'] as String? ?? '',
+      noteImageBase64: json['noteImageBase64'] as String? ?? '',
+      noteImageMimeType: json['noteImageMimeType'] as String? ?? '',
+      noteImageName: json['noteImageName'] as String? ?? '',
+      noteImageRotationTurns: _rotationTurnsFromJson(
+        json['noteImageRotationTurns'],
+      ),
     );
   }
 
@@ -433,6 +453,13 @@ final class InvoiceChatDraft {
     if (amount.isNotEmpty) 'amount': amount,
     'lines': lines.map((e) => e.toJson()).toList(),
     'storeOnline': storeOnline,
+    if (noteImageId.isNotEmpty) 'noteImageId': noteImageId,
+    if (noteImageId.isNotEmpty && noteImageMimeType.isNotEmpty)
+      'noteImageMimeType': noteImageMimeType,
+    if (noteImageId.isNotEmpty && noteImageName.isNotEmpty)
+      'noteImageName': noteImageName,
+    if (noteImageId.isNotEmpty)
+      'noteImageRotationTurns': noteImageRotationTurns,
   };
 
   InvoiceChatDraft copyWith({
@@ -452,7 +479,13 @@ final class InvoiceChatDraft {
     String? amount,
     List<InvoiceLine>? lines,
     bool? storeOnline,
+    String? noteImageId,
+    String? noteImageBase64,
+    String? noteImageMimeType,
+    String? noteImageName,
+    int? noteImageRotationTurns,
     bool clearSelectedRecipientId = false,
+    bool clearNoteImage = false,
   }) {
     return InvoiceChatDraft(
       id: id,
@@ -475,8 +508,35 @@ final class InvoiceChatDraft {
       amount: amount ?? this.amount,
       lines: lines ?? this.lines,
       storeOnline: storeOnline ?? this.storeOnline,
+      noteImageId: clearNoteImage ? '' : (noteImageId ?? this.noteImageId),
+      noteImageBase64: clearNoteImage
+          ? ''
+          : (noteImageBase64 ?? this.noteImageBase64),
+      noteImageMimeType: clearNoteImage
+          ? ''
+          : (noteImageMimeType ?? this.noteImageMimeType),
+      noteImageName: clearNoteImage
+          ? ''
+          : (noteImageName ?? this.noteImageName),
+      noteImageRotationTurns: clearNoteImage
+          ? 0
+          : _normalizeRotationTurns(
+              noteImageRotationTurns ?? this.noteImageRotationTurns,
+            ),
     );
   }
+}
+
+int _rotationTurnsFromJson(Object? raw) {
+  if (raw is! num) {
+    return 0;
+  }
+  return _normalizeRotationTurns(raw.toInt());
+}
+
+int _normalizeRotationTurns(int turns) {
+  final normalized = turns.remainder(4);
+  return normalized.isNegative ? normalized + 4 : normalized;
 }
 
 DateTime _dateFromJson(Object? raw, {required DateTime fallback}) {

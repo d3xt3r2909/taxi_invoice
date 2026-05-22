@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
+import 'package:app_taxi_invoice/src/store/invoice_chat_note_image_storage.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_chat_suggestions.dart';
@@ -10,26 +13,35 @@ import 'package:app_taxi_invoice/src/ui/invoice_number.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_route_helpers.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_save_preview_flow.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 const _assistantAvatarAsset = 'assets/branding/assistant_fab.png';
 const _assistantAvatarSize = 32.0;
 const _assistantAvatarGap = 8.0;
+const _maxRawNoteImageBytes = 20 * 1024 * 1024;
+const _maxPreparedNoteImageBytes = 900 * 1024;
+const _noteImageMaxEdge = 1400;
+const _noteImageWideBreakpoint = 820.0;
 
 final class InvoiceChatWizardScreen extends StatefulWidget {
   const InvoiceChatWizardScreen({
     required this.store,
     required this.settings,
     this.draft,
+    this.noteImageStorage =
+        const SharedPreferencesInvoiceChatNoteImageStorage(),
     super.key,
   });
 
   final InvoiceStoreController store;
   final AppSettingsController settings;
   final InvoiceChatDraft? draft;
+  final InvoiceChatNoteImageStorage noteImageStorage;
 
   @override
   State<InvoiceChatWizardScreen> createState() =>
@@ -63,6 +75,13 @@ final class _InvoiceChatWizardScreenState
   bool _draftHelpRequested = false;
   bool _draftAutosaveQueued = false;
   bool _draftDeleted = false;
+  Timer? _draftAutosaveTimer;
+  String _noteImageId = '';
+  String _noteImageBase64 = '';
+  String _noteImageMimeType = '';
+  String _noteImageName = '';
+  int _noteImageRotationTurns = 0;
+  Uint8List? _noteImageBytes;
   String? _recipientNameError;
   String? _invoiceNumberError;
   String? _routeError;
@@ -102,6 +121,7 @@ final class _InvoiceChatWizardScreenState
     _route.dispose();
     _orderName.dispose();
     _amount.dispose();
+    _draftAutosaveTimer?.cancel();
     super.dispose();
   }
 
@@ -133,6 +153,7 @@ final class _InvoiceChatWizardScreenState
       ..clear()
       ..addAll(draft.lines);
     _storeOnline = draft.storeOnline;
+    _restoreNoteImage(draft);
   }
 
   String get _recipientName {
@@ -149,6 +170,8 @@ final class _InvoiceChatWizardScreenState
 
   bool get _hasMeaningfulDraftProgress {
     return _draftHelpRequested ||
+        _noteImageId.isNotEmpty ||
+        _hasNoteImage ||
         _recipientName.isNotEmpty ||
         _route.text.trim().isNotEmpty ||
         _orderName.text.trim().isNotEmpty ||
@@ -162,7 +185,8 @@ final class _InvoiceChatWizardScreenState
       return;
     }
     _draftAutosaveQueued = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    _draftAutosaveTimer?.cancel();
+    _draftAutosaveTimer = Timer(const Duration(milliseconds: 500), () {
       _draftAutosaveQueued = false;
       if (mounted) {
         unawaited(_autosaveDraft());
@@ -204,6 +228,10 @@ final class _InvoiceChatWizardScreenState
       amount: _amount.text.trim(),
       lines: _lines,
       storeOnline: _storeOnline,
+      noteImageId: _noteImageId,
+      noteImageMimeType: _noteImageMimeType,
+      noteImageName: _noteImageName,
+      noteImageRotationTurns: _noteImageRotationTurns,
     );
   }
 
@@ -226,6 +254,7 @@ final class _InvoiceChatWizardScreenState
       return;
     }
     _draftDeleted = true;
+    await _deleteCurrentNoteImage();
     try {
       await widget.store.deleteInvoiceChatDraft(_draftId);
     } catch (_) {
@@ -236,6 +265,257 @@ final class _InvoiceChatWizardScreenState
 
   void _showMessage(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  bool get _hasNoteImage =>
+      _noteImageBase64.isNotEmpty && _noteImageBytes != null;
+
+  void _restoreNoteImage(InvoiceChatDraft draft) {
+    _noteImageId = draft.noteImageId;
+    _noteImageMimeType = draft.noteImageMimeType;
+    _noteImageName = draft.noteImageName;
+    _noteImageRotationTurns = draft.noteImageRotationTurns;
+
+    final inlineBytes = _decodeNoteImage(draft.noteImageBase64);
+    if (inlineBytes != null) {
+      _noteImageBase64 = draft.noteImageBase64;
+      _noteImageBytes = inlineBytes;
+      unawaited(_migrateInlineNoteImageToLocalStorage(draft));
+      return;
+    }
+    if (_noteImageId.isNotEmpty) {
+      unawaited(_loadNoteImageFromLocalStorage(_noteImageId));
+      return;
+    }
+    _clearNoteImageFields();
+  }
+
+  void _clearNoteImageFields() {
+    _noteImageId = '';
+    _noteImageBase64 = '';
+    _noteImageMimeType = '';
+    _noteImageName = '';
+    _noteImageRotationTurns = 0;
+    _noteImageBytes = null;
+  }
+
+  Future<void> _loadNoteImageFromLocalStorage(String imageId) async {
+    final image = await widget.noteImageStorage.read(imageId);
+    if (!mounted || imageId != _noteImageId || image == null) {
+      return;
+    }
+    final bytes = _decodeNoteImage(image.base64);
+    if (bytes == null) {
+      return;
+    }
+    setState(() {
+      _noteImageBase64 = image.base64;
+      _noteImageMimeType = image.mimeType;
+      _noteImageName = image.name;
+      _noteImageBytes = bytes;
+    });
+  }
+
+  Future<void> _migrateInlineNoteImageToLocalStorage(
+    InvoiceChatDraft draft,
+  ) async {
+    final imageId = draft.noteImageId.isEmpty ? _uuid.v4() : draft.noteImageId;
+    await widget.noteImageStorage.write(
+      InvoiceChatNoteImage(
+        id: imageId,
+        base64: draft.noteImageBase64,
+        mimeType: draft.noteImageMimeType,
+        name: draft.noteImageName,
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _noteImageId = imageId;
+    });
+    await _autosaveDraft(force: true);
+  }
+
+  Future<void> _pickNoteImage() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: true,
+    );
+    if (!mounted || result == null || result.files.isEmpty) {
+      return;
+    }
+    final file = result.files.single;
+    final rawBytes = file.bytes;
+    if (rawBytes == null) {
+      _showMessage('Ne mogu otvoriti odabranu sliku.');
+      return;
+    }
+    if (rawBytes.lengthInBytes > _maxRawNoteImageBytes) {
+      _showMessage('Slika je prevelika. Pokušajte sa manjom fotografijom.');
+      return;
+    }
+
+    final _PreparedNoteImage prepared;
+    try {
+      prepared = _prepareNoteImage(rawBytes, originalName: file.name);
+    } catch (_) {
+      _showMessage('Ne mogu pripremiti sliku. Pokušajte drugu fotografiju.');
+      return;
+    }
+    if (prepared.bytes.lengthInBytes > _maxPreparedNoteImageBytes) {
+      _showMessage('Slika je i dalje prevelika. Pokušajte sa manjom slikom.');
+      return;
+    }
+
+    final previousImageId = _noteImageId;
+    final imageId = _uuid.v4();
+    final imageBase64 = base64Encode(prepared.bytes);
+    await widget.noteImageStorage.write(
+      InvoiceChatNoteImage(
+        id: imageId,
+        base64: imageBase64,
+        mimeType: prepared.mimeType,
+        name: prepared.name,
+      ),
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _noteImageId = imageId;
+      _noteImageBase64 = imageBase64;
+      _noteImageMimeType = prepared.mimeType;
+      _noteImageName = prepared.name;
+      _noteImageRotationTurns = 0;
+      _noteImageBytes = prepared.bytes;
+    });
+    if (previousImageId.isNotEmpty && previousImageId != imageId) {
+      unawaited(widget.noteImageStorage.delete(previousImageId));
+    }
+    await _autosaveDraft(force: true);
+  }
+
+  Future<void> _showNoteImageActions() async {
+    if (!_hasNoteImage) {
+      await _pickNoteImage();
+      return;
+    }
+    final action = await showModalBottomSheet<_NoteImageAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.fullscreen_rounded),
+                title: const Text('Prikaži sliku'),
+                onTap: () =>
+                    Navigator.of(context).pop(_NoteImageAction.preview),
+              ),
+              ListTile(
+                leading: const Icon(Icons.add_photo_alternate_outlined),
+                title: const Text('Zamijeni sliku'),
+                onTap: () =>
+                    Navigator.of(context).pop(_NoteImageAction.replace),
+              ),
+              ListTile(
+                leading: const Icon(Icons.rotate_right_rounded),
+                title: const Text('Rotiraj'),
+                onTap: () => Navigator.of(context).pop(_NoteImageAction.rotate),
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.delete_outline_rounded,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  'Ukloni sliku',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                onTap: () => Navigator.of(context).pop(_NoteImageAction.remove),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted || action == null) {
+      return;
+    }
+    switch (action) {
+      case _NoteImageAction.preview:
+        await _openNoteImagePreview();
+      case _NoteImageAction.replace:
+        await _pickNoteImage();
+      case _NoteImageAction.rotate:
+        _rotateNoteImage();
+      case _NoteImageAction.remove:
+        _removeNoteImage();
+    }
+  }
+
+  Future<void> _openNoteImagePreview() async {
+    final bytes = _noteImageBytes;
+    if (bytes == null) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return Dialog.fullscreen(
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(_noteImageName.isEmpty ? 'Bilješka' : _noteImageName),
+              actions: [
+                IconButton(
+                  tooltip: 'Rotiraj',
+                  onPressed: () {
+                    _rotateNoteImage();
+                    Navigator.of(context).pop();
+                    unawaited(_openNoteImagePreview());
+                  },
+                  icon: const Icon(Icons.rotate_right_rounded),
+                ),
+              ],
+            ),
+            body: _NoteImageViewer(
+              bytes: bytes,
+              rotationTurns: _noteImageRotationTurns,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _rotateNoteImage() {
+    if (!_hasNoteImage) {
+      return;
+    }
+    setState(() {
+      _noteImageRotationTurns = (_noteImageRotationTurns + 1) % 4;
+    });
+  }
+
+  void _removeNoteImage() {
+    if (!_hasNoteImage && _noteImageId.isEmpty) {
+      return;
+    }
+    unawaited(_deleteCurrentNoteImage());
+    setState(_clearNoteImageFields);
+  }
+
+  Future<void> _deleteCurrentNoteImage() async {
+    final imageId = _noteImageId;
+    if (imageId.isEmpty) {
+      return;
+    }
+    await widget.noteImageStorage.delete(imageId);
   }
 
   void _selectRecipient(ServiceRecipient recipient) {
@@ -547,6 +827,7 @@ final class _InvoiceChatWizardScreenState
       _editingLineIndex = null;
       _editingLineField = null;
       _storeOnline = true;
+      _clearNoteImageFields();
       _step = _ChatStep.recipient;
     });
   }
@@ -706,6 +987,17 @@ final class _InvoiceChatWizardScreenState
       appBar: AppBar(
         title: const Text('Pomoćnik za račun'),
         actions: [
+          IconButton(
+            tooltip: _hasNoteImage
+                ? 'Opcije za sliku bilješke'
+                : 'Dodaj sliku bilješke',
+            onPressed: _hasNoteImage ? _showNoteImageActions : _pickNoteImage,
+            icon: Icon(
+              _hasNoteImage
+                  ? Icons.image_rounded
+                  : Icons.add_photo_alternate_outlined,
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: TextButton.icon(
@@ -720,35 +1012,105 @@ final class _InvoiceChatWizardScreenState
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              controller: _messagesController,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-              children: _messages(),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                border: Border(
-                  top: BorderSide(color: theme.colorScheme.outlineVariant),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final noteImageBytes = _noteImageBytes;
+          final showWideNotePanel =
+              _hasNoteImage &&
+              noteImageBytes != null &&
+              constraints.maxWidth >= _noteImageWideBreakpoint;
+          if (showWideNotePanel) {
+            final panelWidth = (constraints.maxWidth * 0.36).clamp(
+              300.0,
+              440.0,
+            );
+            return Row(
+              children: [
+                SizedBox(
+                  width: panelWidth,
+                  child: _NoteImagePanel(
+                    bytes: noteImageBytes,
+                    name: _noteImageName,
+                    rotationTurns: _noteImageRotationTurns,
+                    onPreview: _openNoteImagePreview,
+                    onReplace: _pickNoteImage,
+                    onRotate: _rotateNoteImage,
+                    onRemove: _removeNoteImage,
+                  ),
+                ),
+                VerticalDivider(
+                  width: 1,
+                  color: theme.colorScheme.outlineVariant,
+                ),
+                Expanded(child: _chatBody(context, screenHeight: screenHeight)),
+              ],
+            );
+          }
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: _chatBody(
+                  context,
+                  screenHeight: screenHeight,
+                  reserveFloatingNoteSpace: _hasNoteImage,
                 ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: screenHeight * 0.58),
-                  child: _stepPanel(context),
+              if (_hasNoteImage && noteImageBytes != null)
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: _NoteImageThumbnail(
+                    bytes: noteImageBytes,
+                    rotationTurns: _noteImageRotationTurns,
+                    onTap: _openNoteImagePreview,
+                  ),
                 ),
-              ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
+    );
+  }
+
+  Widget _chatBody(
+    BuildContext context, {
+    required double screenHeight,
+    bool reserveFloatingNoteSpace = false,
+  }) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            controller: _messagesController,
+            padding: EdgeInsets.fromLTRB(
+              16,
+              reserveFloatingNoteSpace ? 116 : 12,
+              16,
+              18,
+            ),
+            children: _messages(),
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              border: Border(
+                top: BorderSide(color: theme.colorScheme.outlineVariant),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: screenHeight * 0.58),
+                child: _stepPanel(context),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -784,6 +1146,11 @@ final class _InvoiceChatWizardScreenState
         fromUser: false,
       ),
     ];
+    if (!_hasNoteImage) {
+      widgets.add(
+        _ChatContentBubble(child: _NoteImagePrompt(onPressed: _pickNoteImage)),
+      );
+    }
     if (_draftHelpRequested) {
       widgets.add(
         const _ChatBubble(
@@ -1494,6 +1861,129 @@ _ChatStep _chatStepFromDraft(String raw) {
   return _ChatStep.recipient;
 }
 
+enum _NoteImageAction { preview, replace, rotate, remove }
+
+final class _PreparedNoteImage {
+  const _PreparedNoteImage({
+    required this.bytes,
+    required this.mimeType,
+    required this.name,
+  });
+
+  final Uint8List bytes;
+  final String mimeType;
+  final String name;
+}
+
+Uint8List? _decodeNoteImage(String raw) {
+  if (raw.isEmpty) {
+    return null;
+  }
+  try {
+    return base64Decode(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+_PreparedNoteImage _prepareNoteImage(
+  Uint8List bytes, {
+  required String originalName,
+}) {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) {
+    final mimeType = _mimeTypeForName(originalName);
+    if (_canDisplayRawImageMimeType(mimeType)) {
+      return _PreparedNoteImage(
+        bytes: bytes,
+        mimeType: mimeType,
+        name: _safeImageName(originalName),
+      );
+    }
+    throw const FormatException('Unsupported note image.');
+  }
+
+  final oriented = img.bakeOrientation(decoded);
+  final maxSide = math.max(oriented.width, oriented.height);
+  final resized = maxSide > _noteImageMaxEdge
+      ? img.copyResize(
+          oriented,
+          width: math.max(
+            1,
+            (oriented.width * (_noteImageMaxEdge / maxSide)).round(),
+          ),
+          height: math.max(
+            1,
+            (oriented.height * (_noteImageMaxEdge / maxSide)).round(),
+          ),
+          interpolation: img.Interpolation.average,
+        )
+      : oriented;
+  final encoded = _encodeNoteImageJpg(resized);
+  return _PreparedNoteImage(
+    bytes: encoded,
+    mimeType: 'image/jpeg',
+    name: _jpgImageName(originalName),
+  );
+}
+
+Uint8List _encodeNoteImageJpg(img.Image image) {
+  const qualities = [72, 62, 52];
+  for (final quality in qualities) {
+    final encoded = Uint8List.fromList(img.encodeJpg(image, quality: quality));
+    if (encoded.lengthInBytes <= _maxPreparedNoteImageBytes) {
+      return encoded;
+    }
+  }
+  final smaller = img.copyResize(
+    image,
+    width: math.max(1, (image.width * 0.78).round()),
+    height: math.max(1, (image.height * 0.78).round()),
+    interpolation: img.Interpolation.average,
+  );
+  return Uint8List.fromList(img.encodeJpg(smaller, quality: 52));
+}
+
+bool _canDisplayRawImageMimeType(String mimeType) {
+  return mimeType == 'image/jpeg' ||
+      mimeType == 'image/png' ||
+      mimeType == 'image/gif' ||
+      mimeType == 'image/webp' ||
+      mimeType == 'image/bmp';
+}
+
+String _mimeTypeForName(String name) {
+  final lower = name.toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+    return 'image/jpeg';
+  }
+  if (lower.endsWith('.png')) {
+    return 'image/png';
+  }
+  if (lower.endsWith('.gif')) {
+    return 'image/gif';
+  }
+  if (lower.endsWith('.webp')) {
+    return 'image/webp';
+  }
+  if (lower.endsWith('.bmp')) {
+    return 'image/bmp';
+  }
+  return 'application/octet-stream';
+}
+
+String _safeImageName(String name) {
+  final trimmed = name.trim();
+  return trimmed.isEmpty ? 'biljeska' : trimmed;
+}
+
+String _jpgImageName(String name) {
+  final safeName = _safeImageName(name);
+  final dotIndex = safeName.lastIndexOf('.');
+  final baseName = dotIndex > 0 ? safeName.substring(0, dotIndex) : safeName;
+  return '$baseName.jpg';
+}
+
 final class _PanelColumn extends StatelessWidget {
   const _PanelColumn({required this.children});
 
@@ -1731,6 +2221,229 @@ final class _AssistantChatAvatar extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+final class _NoteImagePrompt extends StatelessWidget {
+  const _NoteImagePrompt({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.add_photo_alternate_outlined),
+        label: const Text('Dodaj sliku bilješke'),
+      ),
+    );
+  }
+}
+
+final class _NoteImagePanel extends StatelessWidget {
+  const _NoteImagePanel({
+    required this.bytes,
+    required this.name,
+    required this.rotationTurns,
+    required this.onPreview,
+    required this.onReplace,
+    required this.onRotate,
+    required this.onRemove,
+  });
+
+  final Uint8List bytes;
+  final String name;
+  final int rotationTurns;
+  final VoidCallback onPreview;
+  final VoidCallback onReplace;
+  final VoidCallback onRotate;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(color: scheme.surfaceContainerLowest),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 8, 8),
+            child: Row(
+              children: [
+                Icon(Icons.sticky_note_2_outlined, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name.isEmpty ? 'Slika bilješke' : name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Zamijeni sliku',
+                  onPressed: onReplace,
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Rotiraj',
+                  onPressed: onRotate,
+                  icon: const Icon(Icons.rotate_right_rounded),
+                ),
+                IconButton(
+                  tooltip: 'Ukloni sliku',
+                  onPressed: onRemove,
+                  icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Material(
+                  color: scheme.surfaceContainerHighest,
+                  child: InkWell(
+                    onTap: onPreview,
+                    child: _NoteImageViewer(
+                      bytes: bytes,
+                      rotationTurns: rotationTurns,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+final class _NoteImageThumbnail extends StatelessWidget {
+  const _NoteImageThumbnail({
+    required this.bytes,
+    required this.rotationTurns,
+    required this.onTap,
+  });
+
+  final Uint8List bytes;
+  final int rotationTurns;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: 'Otvori sliku bilješke',
+      child: Material(
+        elevation: 6,
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox.square(
+            dimension: 92,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _RotatedNoteImage(
+                  bytes: bytes,
+                  rotationTurns: rotationTurns,
+                  fit: BoxFit.cover,
+                ),
+                Align(
+                  alignment: Alignment.topRight,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: scheme.surface.withValues(alpha: 0.86),
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(12),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(
+                        Icons.fullscreen_rounded,
+                        size: 18,
+                        color: scheme.primary,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _NoteImageViewer extends StatelessWidget {
+  const _NoteImageViewer({required this.bytes, required this.rotationTurns});
+
+  final Uint8List bytes;
+  final int rotationTurns;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: InteractiveViewer(
+        minScale: 0.5,
+        maxScale: 5,
+        child: Center(
+          child: _RotatedNoteImage(
+            bytes: bytes,
+            rotationTurns: rotationTurns,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _RotatedNoteImage extends StatelessWidget {
+  const _RotatedNoteImage({
+    required this.bytes,
+    required this.rotationTurns,
+    required this.fit,
+  });
+
+  final Uint8List bytes;
+  final int rotationTurns;
+  final BoxFit fit;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return RotatedBox(
+      quarterTurns: rotationTurns,
+      child: Image.memory(
+        bytes,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) {
+          return Center(
+            child: Icon(
+              Icons.broken_image_outlined,
+              color: scheme.onSurfaceVariant,
+              size: 42,
+            ),
+          );
+        },
       ),
     );
   }

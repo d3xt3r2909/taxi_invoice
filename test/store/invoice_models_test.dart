@@ -60,6 +60,10 @@ void main() {
           recipientName: 'Zara',
           invoiceNumber: '07/26',
           issueDate: DateTime(2026, 5, 1),
+          noteImageId: 'note-1',
+          noteImageMimeType: 'image/jpeg',
+          noteImageName: 'biljeska.jpg',
+          noteImageRotationTurns: 5,
           lines: [
             InvoiceLine(
               datumRacuna: DateTime(2026, 5, 1),
@@ -76,7 +80,20 @@ void main() {
       storeSnapshotToJsonString(snapshot),
     );
 
-    expect(parsed.invoiceChatDrafts.single.helpRequested, isTrue);
+    expect(parsed.invoiceChatDrafts.single.noteImageRotationTurns, 1);
+  });
+
+  test('invoice chat drafts do not write legacy inline note images', () {
+    final draft = InvoiceChatDraft.fromJson({
+      'id': 'draft-1',
+      'createdAt': DateTime(2026, 5, 1, 8).toIso8601String(),
+      'updatedAt': DateTime(2026, 5, 1, 9).toIso8601String(),
+      'step': 'recipient',
+      'noteImageBase64': 'large-image-payload',
+      'lines': <Object?>[],
+    });
+
+    expect(draft.toJson().containsKey('noteImageBase64'), isFalse);
   });
 }
 

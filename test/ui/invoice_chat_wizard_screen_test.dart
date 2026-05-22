@@ -1,4 +1,5 @@
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
+import 'package:app_taxi_invoice/src/store/invoice_chat_note_image_storage.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_store_repository.dart';
@@ -158,12 +159,47 @@ void main() {
     expect(find.text('Naručilac: Zara'), findsOneWidget);
     expect(find.text('Koji je broj računa?'), findsOneWidget);
   });
+
+  testWidgets('restores a draft note image as a floating thumbnail', (
+    tester,
+  ) async {
+    final draft = InvoiceChatDraft(
+      id: 'draft-1',
+      createdAt: DateTime(2026, 5, 1, 8),
+      updatedAt: DateTime(2026, 5, 1, 9),
+      step: 'recipient',
+      noteImageId: 'note-1',
+      noteImageMimeType: 'image/png',
+      noteImageName: 'biljeska.png',
+      lines: const [],
+    );
+    final noteImageStorage = _MemoryInvoiceChatNoteImageStorage({
+      'note-1': const InvoiceChatNoteImage(
+        id: 'note-1',
+        base64: _transparentPngBase64,
+        mimeType: 'image/png',
+        name: 'biljeska.png',
+      ),
+    });
+
+    await tester.pumpInvoiceChatWizard(
+      draft: draft,
+      noteImageStorage: noteImageStorage,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Otvori sliku bilješke'), findsOneWidget);
+  });
 }
+
+const _transparentPngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
 
 extension on WidgetTester {
   Future<void> pumpInvoiceChatWizard({
     InvoiceStoreController? store,
     InvoiceChatDraft? draft,
+    InvoiceChatNoteImageStorage? noteImageStorage,
   }) async {
     await pumpWidget(
       MaterialApp(
@@ -175,6 +211,8 @@ extension on WidgetTester {
               ),
           settings: AppSettingsController(),
           draft: draft,
+          noteImageStorage:
+              noteImageStorage ?? _MemoryInvoiceChatNoteImageStorage(),
         ),
       ),
     );
@@ -252,5 +290,26 @@ final class _MemoryLocalOnlyInvoiceStorage implements LocalOnlyInvoiceStorage {
   @override
   Future<void> write(StoreSnapshot snapshot) async {
     this.snapshot = snapshot;
+  }
+}
+
+final class _MemoryInvoiceChatNoteImageStorage
+    implements InvoiceChatNoteImageStorage {
+  _MemoryInvoiceChatNoteImageStorage([Map<String, InvoiceChatNoteImage>? seed])
+    : images = {...?seed};
+
+  final Map<String, InvoiceChatNoteImage> images;
+
+  @override
+  Future<InvoiceChatNoteImage?> read(String id) async => images[id];
+
+  @override
+  Future<void> write(InvoiceChatNoteImage image) async {
+    images[image.id] = image;
+  }
+
+  @override
+  Future<void> delete(String id) async {
+    images.remove(id);
   }
 }
