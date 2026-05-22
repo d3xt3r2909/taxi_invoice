@@ -10,26 +10,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 void main() {
-  testWidgets('filters invoice list by current and previous month', (
+  testWidgets('filters invoice list by recipient or all invoices', (
     tester,
   ) async {
     await initializeDateFormatting('bs_BA');
-    final now = DateTime.now();
-    final currentMonth = DateTime(now.year, now.month, 5);
-    final previousMonth = DateTime(now.year, now.month - 1, 5);
     final store = await _loadedStore(
       invoices: [
         _invoice(
-          id: 'current',
-          invoiceNumber: 'current',
-          recipientName: 'Ovaj mjesec firma',
-          issueDate: currentMonth,
+          id: 'zara-1',
+          invoiceNumber: '05/26',
+          recipientName: 'Zara',
+          issueDate: DateTime(2026, 5, 5),
         ),
         _invoice(
-          id: 'previous',
-          invoiceNumber: 'previous',
-          recipientName: 'Prošli mjesec firma',
-          issueDate: previousMonth,
+          id: 'hotel',
+          invoiceNumber: '06/26',
+          recipientName: 'Hotel',
+          issueDate: DateTime(2026, 6, 5),
         ),
       ],
     );
@@ -43,17 +40,60 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('Ovaj mjesec'));
+
+    expect(find.text('Zara - 05/26'), findsOneWidget);
+    expect(find.text('Hotel - 06/26'), findsOneWidget);
+
+    await tester.tap(find.text('Zara').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Ovaj mjesec firma - current'), findsOneWidget);
-    expect(find.text('Prošli mjesec firma - previous'), findsNothing);
+    expect(find.text('Zara - 05/26'), findsOneWidget);
+    expect(find.text('Hotel - 06/26'), findsNothing);
 
-    await tester.tap(find.text('Prošli mjesec'));
+    await tester.tap(find.text('Svi'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Ovaj mjesec firma - current'), findsNothing);
-    expect(find.text('Prošli mjesec firma - previous'), findsOneWidget);
+    expect(find.text('Zara - 05/26'), findsOneWidget);
+    expect(find.text('Hotel - 06/26'), findsOneWidget);
+  });
+
+  testWidgets('sorts invoice list by creation date newest first', (
+    tester,
+  ) async {
+    await initializeDateFormatting('bs_BA');
+    final store = await _loadedStore(
+      invoices: [
+        _invoice(
+          id: 'older-created',
+          invoiceNumber: '08/26',
+          recipientName: 'Stariji unos',
+          issueDate: DateTime(2026, 8, 5),
+          createdAt: DateTime(2026, 5, 10),
+        ),
+        _invoice(
+          id: 'newer-created',
+          invoiceNumber: '05/26',
+          recipientName: 'Noviji unos',
+          issueDate: DateTime(2026, 5, 5),
+          createdAt: DateTime(2026, 5, 20),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          store: store,
+          settings: AppSettingsController(),
+          auth: AppAuthController.notConfigured(),
+        ),
+      ),
+    );
+
+    final newerTop = tester.getTopLeft(find.text('Noviji unos - 05/26')).dy;
+    final olderTop = tester.getTopLeft(find.text('Stariji unos - 08/26')).dy;
+
+    expect(newerTop, lessThan(olderTop));
   });
 
   testWidgets('renders invoice list at large text scale on narrow screen', (
@@ -218,13 +258,14 @@ StoredInvoice _invoice({
   required String invoiceNumber,
   required String recipientName,
   required DateTime issueDate,
+  DateTime? createdAt,
 }) {
   return StoredInvoice(
     id: id,
     invoiceNumber: invoiceNumber,
     recipientName: recipientName,
     issueDate: issueDate,
-    createdAt: issueDate,
+    createdAt: createdAt ?? issueDate,
     lines: [
       InvoiceLine(
         datumRacuna: issueDate,

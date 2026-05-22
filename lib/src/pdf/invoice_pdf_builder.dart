@@ -97,18 +97,22 @@ Future<pw.Font> _loadSerifBold() async {
 Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
   final regular = await _loadSerifRegular();
   final bold = await _loadSerifBold();
+  final layout = _InvoicePdfLayout.forPreset(invoice.pdfLayoutPreset);
+  final fontSettings =
+      invoice.pdfFontSettings ??
+      InvoicePdfFontSettings.defaultsForPreset(invoice.pdfLayoutPreset);
 
   final doc = pw.Document(
     theme: pw.ThemeData.withFont(base: regular, bold: bold),
   );
 
-  pw.TextStyle ts({double size = 10, bool boldFont = false}) =>
+  pw.TextStyle ts({double? size, bool boldFont = false}) =>
       pw.TextStyle(font: boldFont ? bold : regular, fontSize: size);
 
   doc.addPage(
     pw.Page(
       pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(48),
+      margin: pw.EdgeInsets.all(layout.margin),
       textDirection: pw.TextDirection.ltr,
       build: (context) {
         return pw.Column(
@@ -119,12 +123,12 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
               children: [
                 pw.Expanded(
                   child: pw.DefaultTextStyle(
-                    style: ts(),
+                    style: ts(size: fontSettings.providerFontSize),
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
                         pw.Text(InvoiceStaticContent.providerTitle),
-                        pw.SizedBox(height: 4),
+                        pw.SizedBox(height: layout.smallGap),
                         pw.Text(InvoiceStaticContent.providerName),
                         pw.Text(InvoiceStaticContent.providerAddressLine),
                         pw.Text(InvoiceStaticContent.providerTaxId),
@@ -134,10 +138,10 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                     ),
                   ),
                 ),
-                pw.SizedBox(width: 16),
+                pw.SizedBox(width: layout.headerColumnGap),
                 pw.Expanded(
                   child: pw.DefaultTextStyle(
-                    style: ts(),
+                    style: ts(size: fontSettings.recipientFontSize),
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.center,
                       children: [
@@ -145,7 +149,7 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                           InvoiceStaticContent.clientLabel,
                           textAlign: pw.TextAlign.center,
                         ),
-                        pw.SizedBox(height: 6),
+                        pw.SizedBox(height: layout.clientLabelGap),
                         pw.Table(
                           tableWidth: pw.TableWidth.min,
                           border: const pw.TableBorder(
@@ -157,9 +161,9 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                             pw.TableRow(
                               children: [
                                 pw.Padding(
-                                  padding: const pw.EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 8,
+                                  padding: pw.EdgeInsets.symmetric(
+                                    horizontal: layout.clientBoxHorizontal,
+                                    vertical: layout.clientBoxVertical,
                                   ),
                                   child: pw.Column(
                                     mainAxisSize: pw.MainAxisSize.min,
@@ -193,16 +197,19 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                 ),
               ],
             ),
-            pw.Spacer(),
+            if (layout.useFlexiblePageSpacing)
+              pw.Spacer()
+            else
+              pw.SizedBox(height: layout.headerToTitleGap),
             pw.SizedBox(
               width: double.infinity,
               child: pw.Text(
                 'RAČUN BR. ${invoice.invoiceNumber}',
                 textAlign: pw.TextAlign.center,
-                style: ts(size: 18, boldFont: true),
+                style: ts(size: fontSettings.titleFontSize, boldFont: true),
               ),
             ),
-            pw.SizedBox(height: 48),
+            pw.SizedBox(height: layout.titleToTableGap),
             pw.Table(
               border: pw.TableBorder.all(width: 0.6),
               columnWidths: {
@@ -216,49 +223,104 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                 pw.TableRow(
                   verticalAlignment: pw.TableCellVerticalAlignment.middle,
                   children: [
-                    _cell('R.B.', ts, boldFont: true),
-                    _cell('Datum računa', ts, boldFont: true),
-                    _cell('Putna relacija', ts, boldFont: true),
-                    _cell('Br. Narudžbe', ts, boldFont: true),
-                    _cell('Iznos', ts, boldFont: true),
+                    _cell(
+                      'R.B.',
+                      ts,
+                      layout,
+                      fontSize: fontSettings.tableFontSize,
+                      boldFont: true,
+                    ),
+                    _cell(
+                      'Datum računa',
+                      ts,
+                      layout,
+                      fontSize: fontSettings.tableFontSize,
+                      boldFont: true,
+                    ),
+                    _cell(
+                      'Putna relacija',
+                      ts,
+                      layout,
+                      fontSize: fontSettings.tableFontSize,
+                      boldFont: true,
+                    ),
+                    _cell(
+                      'Br. Narudžbe',
+                      ts,
+                      layout,
+                      fontSize: fontSettings.tableFontSize,
+                      boldFont: true,
+                    ),
+                    _cell(
+                      'Iznos',
+                      ts,
+                      layout,
+                      fontSize: fontSettings.tableFontSize,
+                      boldFont: true,
+                    ),
                   ],
                 ),
                 for (var i = 0; i < invoice.lines.length; i++)
                   pw.TableRow(
                     verticalAlignment: pw.TableCellVerticalAlignment.middle,
                     children: [
-                      _cell('${i + 1}.', ts),
+                      _cell(
+                        '${i + 1}.',
+                        ts,
+                        layout,
+                        fontSize: fontSettings.tableFontSize,
+                      ),
                       _cell(
                         _issueDateFmt.format(invoice.lines[i].datumRacuna),
                         ts,
+                        layout,
+                        fontSize: fontSettings.tableFontSize,
                       ),
                       _cell(
                         invoice.lines[i].putnaRelacija,
                         ts,
+                        layout,
+                        fontSize: fontSettings.tableFontSize,
                         align: pw.TextAlign.left,
                       ),
-                      _cell(invoice.lines[i].brojNarudzbe, ts),
-                      _cell(_formatKm(invoice.lines[i].iznosKm), ts),
+                      _cell(
+                        invoice.lines[i].brojNarudzbe,
+                        ts,
+                        layout,
+                        fontSize: fontSettings.tableFontSize,
+                      ),
+                      _cell(
+                        _formatKm(invoice.lines[i].iznosKm),
+                        ts,
+                        layout,
+                        fontSize: fontSettings.tableFontSize,
+                      ),
                     ],
                   ),
               ],
             ),
-            pw.SizedBox(height: 48),
+            pw.SizedBox(height: layout.tableToTotalGap),
             pw.Align(
               alignment: pw.Alignment.centerRight,
               child: pw.Text(
                 'UKUPNO ZA PLATITI: ${_formatKm(invoice.totalKm)}',
-                style: ts(size: 14, boldFont: true),
+                style: ts(size: fontSettings.totalFontSize, boldFont: true),
               ),
             ),
-            pw.SizedBox(height: 24),
+            pw.SizedBox(height: layout.totalToVatGap),
             pw.Align(
               alignment: pw.Alignment.centerRight,
-              child: pw.Text(InvoiceStaticContent.vatNote, style: ts()),
+              child: pw.Text(
+                InvoiceStaticContent.vatNote,
+                style: ts(size: fontSettings.noteFontSize),
+              ),
             ),
             // Fill remaining page height so the footer sits at the bottom of the sheet.
-            pw.Spacer(),
-            pw.SizedBox(height: 12),
+            if (layout.useFlexiblePageSpacing)
+              pw.Spacer()
+            else
+              pw.SizedBox(height: layout.totalToFooterGap),
+            pw.SizedBox(height: layout.footerGap),
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
@@ -268,11 +330,14 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                     children: [
                       pw.Text(
                         'Datum izdavanja računa:',
-                        style: ts(boldFont: true),
+                        style: ts(
+                          size: fontSettings.footerFontSize,
+                          boldFont: true,
+                        ),
                       ),
                       pw.Text(
                         _issueDateFmt.format(invoice.issueDate),
-                        style: ts(),
+                        style: ts(size: fontSettings.footerFontSize),
                       ),
                     ],
                   ),
@@ -281,7 +346,10 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                   child: pw.Center(
                     child: pw.Text(
                       InvoiceStaticContent.stampPlaceholder,
-                      style: ts(boldFont: true),
+                      style: ts(
+                        size: fontSettings.footerFontSize,
+                        boldFont: true,
+                      ),
                     ),
                   ),
                 ),
@@ -289,8 +357,14 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text(InvoiceStaticContent.footerName, style: ts()),
-                      pw.Text(InvoiceStaticContent.footerPhone, style: ts()),
+                      pw.Text(
+                        InvoiceStaticContent.footerName,
+                        style: ts(size: fontSettings.footerFontSize),
+                      ),
+                      pw.Text(
+                        InvoiceStaticContent.footerPhone,
+                        style: ts(size: fontSettings.footerFontSize),
+                      ),
                     ],
                   ),
                 ),
@@ -307,16 +381,113 @@ Future<Uint8List> buildInvoicePdfBytes(StoredInvoice invoice) async {
 
 pw.Widget _cell(
   String text,
-  pw.TextStyle Function({double size, bool boldFont}) ts, {
+  pw.TextStyle Function({double? size, bool boldFont}) ts,
+  _InvoicePdfLayout layout, {
+  required double fontSize,
   bool boldFont = false,
   pw.TextAlign align = pw.TextAlign.center,
 }) {
   return pw.Padding(
-    padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+    padding: pw.EdgeInsets.symmetric(
+      horizontal: layout.tableCellHorizontal,
+      vertical: layout.tableCellVertical,
+    ),
     child: pw.Text(
       text,
       textAlign: align,
-      style: ts(boldFont: boldFont),
+      style: ts(size: fontSize, boldFont: boldFont),
     ),
   );
+}
+
+final class _InvoicePdfLayout {
+  const _InvoicePdfLayout({
+    required this.margin,
+    required this.smallGap,
+    required this.headerColumnGap,
+    required this.clientLabelGap,
+    required this.clientBoxHorizontal,
+    required this.clientBoxVertical,
+    required this.headerToTitleGap,
+    required this.titleToTableGap,
+    required this.tableToTotalGap,
+    required this.totalToVatGap,
+    required this.totalToFooterGap,
+    required this.footerGap,
+    required this.tableCellHorizontal,
+    required this.tableCellVertical,
+    required this.useFlexiblePageSpacing,
+  });
+
+  final double margin;
+  final double smallGap;
+  final double headerColumnGap;
+  final double clientLabelGap;
+  final double clientBoxHorizontal;
+  final double clientBoxVertical;
+  final double headerToTitleGap;
+  final double titleToTableGap;
+  final double tableToTotalGap;
+  final double totalToVatGap;
+  final double totalToFooterGap;
+  final double footerGap;
+  final double tableCellHorizontal;
+  final double tableCellVertical;
+  final bool useFlexiblePageSpacing;
+
+  static _InvoicePdfLayout forPreset(InvoicePdfLayoutPreset preset) {
+    return switch (preset) {
+      InvoicePdfLayoutPreset.normal => const _InvoicePdfLayout(
+        margin: 48,
+        smallGap: 4,
+        headerColumnGap: 16,
+        clientLabelGap: 6,
+        clientBoxHorizontal: 10,
+        clientBoxVertical: 8,
+        headerToTitleGap: 0,
+        titleToTableGap: 48,
+        tableToTotalGap: 48,
+        totalToVatGap: 24,
+        totalToFooterGap: 0,
+        footerGap: 12,
+        tableCellHorizontal: 4,
+        tableCellVertical: 8,
+        useFlexiblePageSpacing: true,
+      ),
+      InvoicePdfLayoutPreset.compact => const _InvoicePdfLayout(
+        margin: 38,
+        smallGap: 3,
+        headerColumnGap: 12,
+        clientLabelGap: 4,
+        clientBoxHorizontal: 8,
+        clientBoxVertical: 5,
+        headerToTitleGap: 30,
+        titleToTableGap: 30,
+        tableToTotalGap: 28,
+        totalToVatGap: 14,
+        totalToFooterGap: 16,
+        footerGap: 8,
+        tableCellHorizontal: 3,
+        tableCellVertical: 5,
+        useFlexiblePageSpacing: false,
+      ),
+      InvoicePdfLayoutPreset.dense => const _InvoicePdfLayout(
+        margin: 30,
+        smallGap: 2,
+        headerColumnGap: 10,
+        clientLabelGap: 3,
+        clientBoxHorizontal: 6,
+        clientBoxVertical: 4,
+        headerToTitleGap: 18,
+        titleToTableGap: 18,
+        tableToTotalGap: 14,
+        totalToVatGap: 8,
+        totalToFooterGap: 10,
+        footerGap: 6,
+        tableCellHorizontal: 2,
+        tableCellVertical: 3,
+        useFlexiblePageSpacing: false,
+      ),
+    };
+  }
 }

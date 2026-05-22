@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:app_taxi_invoice/src/export/invoice_editable_export_builder.dart';
 import 'package:app_taxi_invoice/src/pdf/invoice_pdf_builder.dart';
 import 'package:app_taxi_invoice/src/settings/app_settings_controller.dart';
 import 'package:app_taxi_invoice/src/store/invoice_models.dart';
@@ -8,6 +9,7 @@ import 'package:app_taxi_invoice/src/ui/invoice_color_scheme.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_editor_screen.dart';
 import 'package:app_taxi_invoice/src/ui/invoice_date_formats.dart';
 import 'package:app_taxi_invoice/src/ui/store_sync_status.dart';
+import 'package:app_taxi_invoice/src/util/file_download.dart';
 import 'package:app_taxi_invoice/src/util/pdf_download.dart';
 import 'package:app_taxi_invoice/src/util/reveal_saved_pdf.dart';
 import 'package:flutter/foundation.dart'
@@ -52,6 +54,39 @@ Future<void> _openSavedPdfInSystemUi(BuildContext context, String path) async {
   }
 }
 
+Future<void> _downloadEditableInvoice(
+  BuildContext context,
+  StoredInvoice invoice,
+) async {
+  try {
+    await downloadFileBytes(
+      bytes: buildInvoiceEditableDocxBytes(invoice),
+      fileName: invoiceEditableExportFileName(invoice),
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      description: 'Word dokument',
+      extensions: const ['.docx'],
+    );
+  } catch (e) {
+    if (!context.mounted) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        title: const Text('Izvoz nije dostupan'),
+        content: Text('$e'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dCtx).pop(),
+            child: const Text('U redu'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class InvoiceDetailScreen extends StatefulWidget {
   const InvoiceDetailScreen({
     required this.store,
@@ -81,6 +116,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PdfPreviewScreen(
+          store: widget.store,
           invoice: invoice,
           pdfBytes: bytes,
           initialSavedPdfPath: invoice.savedPdfPath,
@@ -199,6 +235,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   switch (action) {
                     case _InvoiceOverflowAction.share:
                       await _sharePdf(context, invoice);
+                    case _InvoiceOverflowAction.editableExport:
+                      await _downloadEditableInvoice(context, invoice);
                     case _InvoiceOverflowAction.openSaved:
                       await _openLastSavedPdf(context, invoice);
                     case _InvoiceOverflowAction.delete:
@@ -224,6 +262,20 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                           ),
                           const SizedBox(width: 12),
                           const Expanded(child: Text('Podijeli PDF')),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: _InvoiceOverflowAction.editableExport,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.description_outlined,
+                            size: 22,
+                            color: scheme.onSurface,
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(child: Text('Hitni izvoz za Word')),
                         ],
                       ),
                     ),
@@ -365,7 +417,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   }
 }
 
-enum _InvoiceOverflowAction { share, openSaved, delete }
+enum _InvoiceOverflowAction { share, editableExport, openSaved, delete }
 
 /// Tamna tema: jača granica kartice; svijetla ostaje na [ColorScheme.outline].
 BorderSide _invoiceDetailCardBorderSide(
@@ -633,12 +685,14 @@ final class PdfPreviewScreen extends StatefulWidget {
   const PdfPreviewScreen({
     required this.invoice,
     required this.pdfBytes,
+    this.store,
     this.initialSavedPdfPath,
     super.key,
   });
 
   final StoredInvoice invoice;
   final Uint8List pdfBytes;
+  final InvoiceStoreController? store;
   final String? initialSavedPdfPath;
 
   @override
@@ -647,14 +701,35 @@ final class PdfPreviewScreen extends StatefulWidget {
 
 class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
   late String? _lastSavedPath;
+  late InvoicePdfLayoutPreset _layoutPreset;
+  late InvoicePdfFontSettings? _fontSettings;
 
   @override
   void initState() {
     super.initState();
     _lastSavedPath = widget.initialSavedPdfPath;
+    _layoutPreset = widget.invoice.pdfLayoutPreset;
+    _fontSettings = widget.invoice.pdfFontSettings;
   }
 
-  String get _pdfFileName => invoicePdfFileName(widget.invoice);
+  StoredInvoice get _previewInvoice {
+    return widget.invoice.copyWith(
+      pdfLayoutPreset: _layoutPreset,
+      pdfFontSettings: _fontSettings,
+      clearPdfFontSettings: _fontSettings == null,
+      savedPdfPath: _lastSavedPath,
+    );
+  }
+
+  String get _pdfFileName => invoicePdfFileName(_previewInvoice);
+
+  Future<Uint8List> _buildPdfBytes(PdfPageFormat format) {
+    if (_layoutPreset == widget.invoice.pdfLayoutPreset &&
+        _fontSettings == widget.invoice.pdfFontSettings) {
+      return Future.value(widget.pdfBytes);
+    }
+    return buildInvoicePdfBytes(_previewInvoice);
+  }
 
   Future<void> _openSaved(BuildContext context) async {
     final path = _lastSavedPath;
@@ -664,14 +739,261 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
     await _openSavedPdfInSystemUi(context, path);
   }
 
+  InvoicePdfFontSettings get _effectiveFontSettings {
+    return _fontSettings ??
+        InvoicePdfFontSettings.defaultsForPreset(_layoutPreset);
+  }
+
+  Future<void> _chooseLayoutPreset(BuildContext context) async {
+    final selected = await showModalBottomSheet<Object>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            children: [
+              Text(
+                'Izgled PDF-a',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Ako račun ne stane lijepo na stranicu, izaberite gušći '
+                'izgled prije čuvanja ili štampe.',
+                style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
+              ),
+              const SizedBox(height: 10),
+              for (final preset in InvoicePdfLayoutPreset.values)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    preset == _layoutPreset
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                  ),
+                  title: Text(_pdfLayoutPresetLabel(preset)),
+                  subtitle: Text(_pdfLayoutPresetDescription(preset)),
+                  onTap: () => Navigator.of(ctx).pop(preset),
+                ),
+              const Divider(height: 18),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.text_fields_rounded),
+                title: const Text('Napredne veličine teksta'),
+                subtitle: const Text(
+                  'Ručno podesite tekst po dijelovima računa.',
+                ),
+                onTap: () =>
+                    Navigator.of(ctx).pop(_PdfLayoutSheetAction.advancedFonts),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected == null || !context.mounted) {
+      return;
+    }
+    if (selected is InvoicePdfLayoutPreset) {
+      if (selected == _layoutPreset && _fontSettings == null) {
+        return;
+      }
+      await _setLayoutPreset(context, selected);
+      return;
+    }
+    if (selected == _PdfLayoutSheetAction.advancedFonts) {
+      await _chooseAdvancedFontSettings(context);
+    }
+  }
+
+  Future<void> _setLayoutPreset(
+    BuildContext context,
+    InvoicePdfLayoutPreset preset,
+  ) async {
+    setState(() {
+      _layoutPreset = preset;
+      _fontSettings = null;
+    });
+    final store = widget.store;
+    if (store == null) {
+      return;
+    }
+    try {
+      await store.setInvoicePdfLayoutPreset(widget.invoice.id, preset);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Izgled je promijenjen samo za ovaj pregled. Nije sačuvan u bazi.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _chooseAdvancedFontSettings(BuildContext context) async {
+    var draft = _effectiveFontSettings;
+    final selected = await showModalBottomSheet<InvoicePdfFontSettings>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            void update(InvoicePdfFontSettings next) {
+              setSheetState(() {
+                draft = next;
+              });
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  bottom: 16 + MediaQuery.viewInsetsOf(ctx).bottom,
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    Text(
+                      'Napredni tekst',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Promjena vrijedi za ovaj račun i koristi se kod '
+                      'pregleda, čuvanja i štampe PDF-a.',
+                      style: theme.textTheme.bodyMedium?.copyWith(height: 1.35),
+                    ),
+                    const SizedBox(height: 12),
+                    _PdfFontSizeSlider(
+                      label: 'Podaci firme',
+                      value: draft.providerFontSize,
+                      onChanged: (value) =>
+                          update(draft.copyWith(providerFontSize: value)),
+                    ),
+                    _PdfFontSizeSlider(
+                      label: 'Naručilac',
+                      value: draft.recipientFontSize,
+                      onChanged: (value) =>
+                          update(draft.copyWith(recipientFontSize: value)),
+                    ),
+                    _PdfFontSizeSlider(
+                      label: 'Naslov računa',
+                      value: draft.titleFontSize,
+                      onChanged: (value) =>
+                          update(draft.copyWith(titleFontSize: value)),
+                    ),
+                    _PdfFontSizeSlider(
+                      label: 'Tabela stavki',
+                      value: draft.tableFontSize,
+                      onChanged: (value) =>
+                          update(draft.copyWith(tableFontSize: value)),
+                    ),
+                    _PdfFontSizeSlider(
+                      label: 'Ukupno',
+                      value: draft.totalFontSize,
+                      onChanged: (value) =>
+                          update(draft.copyWith(totalFontSize: value)),
+                    ),
+                    _PdfFontSizeSlider(
+                      label: 'Napomena',
+                      value: draft.noteFontSize,
+                      onChanged: (value) =>
+                          update(draft.copyWith(noteFontSize: value)),
+                    ),
+                    _PdfFontSizeSlider(
+                      label: 'Potpis i dno',
+                      value: draft.footerFontSize,
+                      onChanged: (value) =>
+                          update(draft.copyWith(footerFontSize: value)),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () => update(
+                        InvoicePdfFontSettings.defaultsForPreset(_layoutPreset),
+                      ),
+                      icon: const Icon(Icons.restart_alt_rounded),
+                      label: const Text('Vrati na veličine iz preseta'),
+                    ),
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
+                      onPressed: () => Navigator.of(ctx).pop(draft),
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text('Primijeni'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (selected == null || !context.mounted) {
+      return;
+    }
+    await _setFontSettings(context, selected);
+  }
+
+  Future<void> _setFontSettings(
+    BuildContext context,
+    InvoicePdfFontSettings fontSettings,
+  ) async {
+    setState(() {
+      _fontSettings = fontSettings;
+    });
+    final store = widget.store;
+    if (store == null) {
+      return;
+    }
+    try {
+      await store.setInvoicePdfFontSettings(widget.invoice.id, fontSettings);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Veličine teksta su promijenjene samo za ovaj pregled.',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _printCurrentPdf(BuildContext context) async {
+    final bytes = await _buildPdfBytes(PdfPageFormat.a4);
+    if (!context.mounted) {
+      return;
+    }
+    await _layoutPrintPdf(context, bytes, _pdfFileName);
+  }
+
+  Future<void> _exportEditable(BuildContext context) async {
+    await _downloadEditableInvoice(context, _previewInvoice);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('PDF · ${invoiceDocumentTitle(widget.invoice)}'),
+        title: Text('PDF · ${invoiceDocumentTitle(_previewInvoice)}'),
       ),
       body: PdfPreview(
-        build: (format) async => widget.pdfBytes,
+        key: ValueKey(Object.hash(_layoutPreset, _fontSettings)),
+        build: _buildPdfBytes,
         pdfFileName: _pdfFileName,
         dynamicLayout: false,
         allowPrinting: false,
@@ -691,6 +1013,16 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
                   : 'Prikaži u sistemskim datotekama',
               onPressed: () => _openSaved(context),
             ),
+          IconButton(
+            icon: const Icon(Icons.tune_outlined),
+            tooltip: 'Izgled PDF-a',
+            onPressed: () => _chooseLayoutPreset(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.description_outlined),
+            tooltip: 'Hitni izvoz za Word',
+            onPressed: () => _exportEditable(context),
+          ),
           PdfPreviewAction(
             icon: const Tooltip(
               message: 'Sačuvaj PDF',
@@ -706,11 +1038,109 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
           IconButton(
             icon: const Icon(Icons.print),
             tooltip: 'Štampa',
-            onPressed: () =>
-                _layoutPrintPdf(context, widget.pdfBytes, _pdfFileName),
+            onPressed: () => _printCurrentPdf(context),
           ),
         ],
       ),
     );
   }
+}
+
+enum _PdfLayoutSheetAction { advancedFonts }
+
+final class _PdfFontSizeSlider extends StatelessWidget {
+  const _PdfFontSizeSlider({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  child: Text(
+                    _formatPdfFontSize(value),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            min: InvoicePdfFontSettings.minFontSize,
+            max: InvoicePdfFontSettings.maxFontSize,
+            divisions:
+                ((InvoicePdfFontSettings.maxFontSize -
+                            InvoicePdfFontSettings.minFontSize) *
+                        2)
+                    .round(),
+            value: value
+                .clamp(
+                  InvoicePdfFontSettings.minFontSize,
+                  InvoicePdfFontSettings.maxFontSize,
+                )
+                .toDouble(),
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatPdfFontSize(double value) {
+  final rounded = value.roundToDouble();
+  if ((value - rounded).abs() < 0.05) {
+    return rounded.toStringAsFixed(0);
+  }
+  return value.toStringAsFixed(1);
+}
+
+String _pdfLayoutPresetLabel(InvoicePdfLayoutPreset preset) {
+  return switch (preset) {
+    InvoicePdfLayoutPreset.normal => 'Normalno',
+    InvoicePdfLayoutPreset.compact => 'Kompaktno',
+    InvoicePdfLayoutPreset.dense => 'Najviše sabijeno',
+  };
+}
+
+String _pdfLayoutPresetDescription(InvoicePdfLayoutPreset preset) {
+  return switch (preset) {
+    InvoicePdfLayoutPreset.normal => 'Originalni razmaci i veličina teksta.',
+    InvoicePdfLayoutPreset.compact => 'Manji razmaci za račune sa više stavki.',
+    InvoicePdfLayoutPreset.dense =>
+      'Najmanji razmaci kada mora stati što više teksta.',
+  };
 }

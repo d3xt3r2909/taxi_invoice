@@ -238,6 +238,95 @@ void main() {
     expect(controller.snapshot.invoices.single.id, 'invoice-1');
     expect(controller.localOnlySnapshot.invoices, isEmpty);
   });
+
+  test('setInvoicePdfLayoutPreset updates an online invoice', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(
+        StoreSnapshot.empty().copyWith(invoices: [_invoice()]),
+      ),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+    );
+    await controller.load();
+
+    await controller.setInvoicePdfLayoutPreset(
+      'invoice-1',
+      InvoicePdfLayoutPreset.compact,
+    );
+
+    expect(
+      controller.invoiceById('invoice-1')?.pdfLayoutPreset,
+      InvoicePdfLayoutPreset.compact,
+    );
+  });
+
+  test('setInvoicePdfLayoutPreset clears custom font settings', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(
+        StoreSnapshot.empty().copyWith(
+          invoices: [_invoice().copyWith(pdfFontSettings: _fontSettings())],
+        ),
+      ),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+    );
+    await controller.load();
+
+    await controller.setInvoicePdfLayoutPreset(
+      'invoice-1',
+      InvoicePdfLayoutPreset.dense,
+    );
+
+    expect(controller.invoiceById('invoice-1')?.pdfFontSettings, isNull);
+  });
+
+  test('setInvoicePdfFontSettings updates an online invoice', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(
+        StoreSnapshot.empty().copyWith(invoices: [_invoice()]),
+      ),
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(),
+    );
+    await controller.load();
+
+    await controller.setInvoicePdfFontSettings('invoice-1', _fontSettings());
+
+    expect(
+      controller.invoiceById('invoice-1')?.pdfFontSettings?.tableFontSize,
+      8.5,
+    );
+  });
+
+  test('setInvoicePdfLayoutPreset updates a local-only invoice', () async {
+    final storage = _MemoryInvoiceStoreTextStorage(
+      storeSnapshotToJsonString(StoreSnapshot.empty()),
+      syncStatus: InvoiceStoreSyncStatus.offlineCached,
+    );
+    final controller = InvoiceStoreController(
+      repository: InvoiceStoreRepository(storage: storage),
+      localOnlyStorage: _MemoryLocalOnlyInvoiceStorage(
+        StoreSnapshot.empty().copyWith(invoices: [_invoice()]),
+      ),
+    );
+    await controller.load();
+
+    await controller.setInvoicePdfLayoutPreset(
+      'invoice-1',
+      InvoicePdfLayoutPreset.dense,
+    );
+
+    expect(
+      controller.invoiceById('invoice-1')?.pdfLayoutPreset,
+      InvoicePdfLayoutPreset.dense,
+    );
+  });
 }
 
 StoredInvoice _invoice({String? recipientId, String recipientName = ''}) {
@@ -271,6 +360,18 @@ ServiceRecipient _recipient() {
     name: 'Firma d.o.o.',
     address: 'Adresa 1',
     jib: '123',
+  );
+}
+
+InvoicePdfFontSettings _fontSettings() {
+  return const InvoicePdfFontSettings(
+    providerFontSize: 9,
+    recipientFontSize: 9,
+    titleFontSize: 16,
+    tableFontSize: 8.5,
+    totalFontSize: 12,
+    noteFontSize: 8,
+    footerFontSize: 8,
   );
 }
 

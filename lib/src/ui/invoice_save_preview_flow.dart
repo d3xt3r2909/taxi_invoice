@@ -106,6 +106,7 @@ Future<InvoiceSavePostAction?> saveInvoiceAndOpenPdfPreview({
   final action = await Navigator.of(context).push<InvoiceSavePostAction>(
     MaterialPageRoute<InvoiceSavePostAction>(
       builder: (_) => InvoiceSavedScreen(
+        store: store,
         invoice: previewInvoice,
         pdfBytes: bytes,
         savedPdfPath: savedPath,
@@ -118,6 +119,7 @@ Future<InvoiceSavePostAction?> saveInvoiceAndOpenPdfPreview({
 
 final class InvoiceSavedScreen extends StatelessWidget {
   const InvoiceSavedScreen({
+    required this.store,
     required this.invoice,
     required this.pdfBytes,
     required this.savedPdfPath,
@@ -125,6 +127,7 @@ final class InvoiceSavedScreen extends StatelessWidget {
     super.key,
   });
 
+  final InvoiceStoreController store;
   final StoredInvoice invoice;
   final Uint8List pdfBytes;
   final String? savedPdfPath;
@@ -195,6 +198,7 @@ final class InvoiceSavedScreen extends StatelessWidget {
                 Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => PdfPreviewScreen(
+                      store: store,
                       invoice: invoice,
                       pdfBytes: pdfBytes,
                       initialSavedPdfPath: savedPdfPath,

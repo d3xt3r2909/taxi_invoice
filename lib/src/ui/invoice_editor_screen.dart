@@ -62,6 +62,7 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
   late final TextEditingController _recipientAddress;
   late final TextEditingController _recipientJib;
   String? _selectedRecipientId;
+  String? _lastSuggestedInvoiceNumber;
 
   @override
   void initState() {
@@ -84,6 +85,10 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
     }
     if (_lineKeys.isEmpty) {
       _lineKeys.add(GlobalKey<_LineBlockState>());
+    }
+    _lastSuggestedInvoiceNumber = _suggestedInvoiceNumber();
+    if (ex == null) {
+      _invoiceNo.text = _lastSuggestedInvoiceNumber!;
     }
   }
 
@@ -113,6 +118,26 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
       return;
     }
     setState(() => _lineKeys.removeAt(i));
+  }
+
+  String _suggestedInvoiceNumber() {
+    return suggestInvoiceNumber(
+      store: widget.store,
+      recipientName: _recipientName.text.trim(),
+      date: _issueDate,
+      existingInvoiceId: widget.existing?.id,
+    );
+  }
+
+  void _syncSuggestedInvoiceNumber() {
+    final previousSuggestion = _lastSuggestedInvoiceNumber;
+    final nextSuggestion = _suggestedInvoiceNumber();
+    final current = _invoiceNo.text.trim();
+    _lastSuggestedInvoiceNumber = nextSuggestion;
+    if (widget.existing == null &&
+        (current.isEmpty || current == previousSuggestion)) {
+      _invoiceNo.text = nextSuggestion;
+    }
   }
 
   DateTime? _lineInitialDatum(StoredInvoice? ex, int i) {
@@ -178,7 +203,9 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
     }
     if (!isValidInvoiceNumberFormat(no)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Broj računa mora biti u formatu 05/26.')),
+        const SnackBar(
+          content: Text('Broj računa mora biti u formatu 102/26.'),
+        ),
       );
       return;
     }
@@ -248,6 +275,7 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
     final scheme = theme.colorScheme;
 
     final ex = widget.existing;
+    final invoiceNumberSuggestion = _suggestedInvoiceNumber();
     return Scaffold(
       backgroundColor: scheme.surface,
       appBar: AppBar(
@@ -276,7 +304,7 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
                   decoration: _invoiceEditorInputDecoration(
                     context,
                     label: 'Broj računa',
-                    hint: 'npr. 05/26',
+                    hint: 'npr. 102/26',
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -284,16 +312,16 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    for (final invoiceNumber in suggestInvoiceNumbers(
-                      _issueDate,
-                    ))
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() => _invoiceNo.text = invoiceNumber);
-                        },
-                        icon: const Icon(Icons.receipt_long_outlined, size: 18),
-                        label: Text(invoiceNumber),
-                      ),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _lastSuggestedInvoiceNumber = invoiceNumberSuggestion;
+                          _invoiceNo.text = invoiceNumberSuggestion;
+                        });
+                      },
+                      icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                      label: Text('Prijedlog $invoiceNumberSuggestion'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -310,7 +338,10 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
                         lastDate: DateTime(2100),
                       );
                       if (d != null) {
-                        setState(() => _issueDate = d);
+                        setState(() {
+                          _issueDate = d;
+                          _syncSuggestedInvoiceNumber();
+                        });
                       }
                     },
                     child: Padding(
@@ -406,6 +437,7 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
                                   _recipientJib.text = r.jib;
                                 }
                               }
+                              _syncSuggestedInvoiceNumber();
                             });
                           },
                         ),
@@ -454,6 +486,9 @@ final class _InvoiceEditorScreenState extends State<InvoiceEditorScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: _recipientName,
+                      onChanged: (_) {
+                        setState(_syncSuggestedInvoiceNumber);
+                      },
                       decoration: _invoiceEditorInputDecoration(
                         context,
                         label: 'Naziv na računu',

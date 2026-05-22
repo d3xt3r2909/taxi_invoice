@@ -491,6 +491,78 @@ final class InvoiceStoreController extends ChangeNotifier {
     await _replaceSnapshot(_snapshot.copyWith(invoices: [...others, updated]));
   }
 
+  Future<void> setInvoicePdfLayoutPreset(
+    String invoiceId,
+    InvoicePdfLayoutPreset preset,
+  ) async {
+    if (!isInvoiceStoredOnline(invoiceId)) {
+      final idx = _localOnlySnapshot.invoices.indexWhere(
+        (e) => e.id == invoiceId,
+      );
+      if (idx < 0) {
+        return;
+      }
+      final updated = _localOnlySnapshot.invoices[idx].copyWith(
+        pdfLayoutPreset: preset,
+        clearPdfFontSettings: true,
+      );
+      final others = _localOnlySnapshot.invoices
+          .where((e) => e.id != invoiceId)
+          .toList();
+      _localOnlySnapshot = _localOnlySnapshot.copyWith(
+        invoices: [...others, updated],
+      );
+      await _persistLocalOnly();
+      notifyListeners();
+      return;
+    }
+    final list = _snapshot.invoices;
+    final idx = list.indexWhere((e) => e.id == invoiceId);
+    if (idx < 0) {
+      return;
+    }
+    final updated = list[idx].copyWith(
+      pdfLayoutPreset: preset,
+      clearPdfFontSettings: true,
+    );
+    final others = list.where((e) => e.id != invoiceId).toList();
+    await _replaceSnapshot(_snapshot.copyWith(invoices: [...others, updated]));
+  }
+
+  Future<void> setInvoicePdfFontSettings(
+    String invoiceId,
+    InvoicePdfFontSettings fontSettings,
+  ) async {
+    if (!isInvoiceStoredOnline(invoiceId)) {
+      final idx = _localOnlySnapshot.invoices.indexWhere(
+        (e) => e.id == invoiceId,
+      );
+      if (idx < 0) {
+        return;
+      }
+      final updated = _localOnlySnapshot.invoices[idx].copyWith(
+        pdfFontSettings: fontSettings,
+      );
+      final others = _localOnlySnapshot.invoices
+          .where((e) => e.id != invoiceId)
+          .toList();
+      _localOnlySnapshot = _localOnlySnapshot.copyWith(
+        invoices: [...others, updated],
+      );
+      await _persistLocalOnly();
+      notifyListeners();
+      return;
+    }
+    final list = _snapshot.invoices;
+    final idx = list.indexWhere((e) => e.id == invoiceId);
+    if (idx < 0) {
+      return;
+    }
+    final updated = list[idx].copyWith(pdfFontSettings: fontSettings);
+    final others = list.where((e) => e.id != invoiceId).toList();
+    await _replaceSnapshot(_snapshot.copyWith(invoices: [...others, updated]));
+  }
+
   Future<void> _persistLocalOnly() {
     return _localOnlyStorage.write(_localOnlySnapshot);
   }

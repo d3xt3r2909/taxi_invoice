@@ -13,6 +13,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
+  archive: ^4.0.9
   file_picker: ^8.3.7
   intl: ^0.20.2
   path_provider: ^2.1.5

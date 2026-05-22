@@ -41,7 +41,7 @@ final class HomeScreen extends StatefulWidget {
 }
 
 final class _HomeScreenState extends State<HomeScreen> {
-  _InvoiceHomeFilter _filter = _InvoiceHomeFilter.all;
+  String? _selectedRecipientFilter;
   bool _assistantFabExpanded = true;
 
   Future<void> _previewPdf(BuildContext context, StoredInvoice invoice) async {
@@ -52,6 +52,7 @@ final class _HomeScreenState extends State<HomeScreen> {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => PdfPreviewScreen(
+          store: widget.store,
           invoice: invoice,
           pdfBytes: bytes,
           initialSavedPdfPath: invoice.savedPdfPath,
@@ -129,7 +130,7 @@ final class _HomeScreenState extends State<HomeScreen> {
     );
     if (mounted &&
         widget.store.invoicesSortedByIssueDate.length > invoiceCount) {
-      setState(() => _filter = _InvoiceHomeFilter.all);
+      setState(() => _selectedRecipientFilter = null);
     }
   }
 
@@ -147,7 +148,7 @@ final class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (mounted && store.invoicesSortedByIssueDate.length > invoiceCount) {
-      setState(() => _filter = _InvoiceHomeFilter.all);
+      setState(() => _selectedRecipientFilter = null);
     }
   }
 
@@ -173,8 +174,16 @@ final class _HomeScreenState extends State<HomeScreen> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final allInvoices = store.invoicesSortedByIssueDate;
-    final list = _filterInvoices(allInvoices, _filter, DateTime.now());
+    final allInvoices = _sortInvoicesByCreatedDate(
+      store.invoicesSortedByIssueDate,
+    );
+    final recipientFilters = _recipientFiltersForInvoices(allInvoices);
+    final activeRecipientFilter =
+        _selectedRecipientFilter != null &&
+            recipientFilters.contains(_selectedRecipientFilter)
+        ? _selectedRecipientFilter
+        : null;
+    final list = _filterInvoicesByRecipient(allInvoices, activeRecipientFilter);
 
     return Scaffold(
       body: NotificationListener<UserScrollNotification>(
@@ -190,8 +199,10 @@ final class _HomeScreenState extends State<HomeScreen> {
             if (allInvoices.isNotEmpty)
               SliverToBoxAdapter(
                 child: _InvoiceFilterBar(
-                  selected: _filter,
-                  onSelected: (filter) => setState(() => _filter = filter),
+                  recipients: recipientFilters,
+                  selectedRecipient: activeRecipientFilter,
+                  onSelected: (recipient) =>
+                      setState(() => _selectedRecipientFilter = recipient),
                 ),
               ),
             if (allInvoices.isEmpty)
@@ -206,7 +217,9 @@ final class _HomeScreenState extends State<HomeScreen> {
             else if (list.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: _HomeEmptyState(message: _emptyFilterMessage(_filter)),
+                child: _HomeEmptyState(
+                  message: _emptyFilterMessage(activeRecipientFilter),
+                ),
               )
             else
               SliverPadding(
@@ -247,8 +260,6 @@ final class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
-enum _InvoiceHomeFilter { currentMonth, previousMonth, all }
 
 final class _AssistantFloatingActionButton extends StatelessWidget {
   const _AssistantFloatingActionButton({
@@ -564,43 +575,68 @@ final class _HomeEmptyState extends StatelessWidget {
   }
 }
 
-List<StoredInvoice> _filterInvoices(
+List<String> _recipientFiltersForInvoices(List<StoredInvoice> invoices) {
+  final recipients = <String>{};
+  for (final invoice in invoices) {
+    final recipient = invoice.recipientName.trim();
+    if (recipient.isNotEmpty) {
+      recipients.add(recipient);
+    }
+  }
+  return recipients.toList()..sort(_compareText);
+}
+
+List<StoredInvoice> _sortInvoicesByCreatedDate(List<StoredInvoice> invoices) {
+  final sorted = List<StoredInvoice>.from(invoices);
+  sorted.sort((a, b) {
+    final created = b.createdAt.compareTo(a.createdAt);
+    if (created != 0) {
+      return created;
+    }
+    final issued = b.issueDate.compareTo(a.issueDate);
+    if (issued != 0) {
+      return issued;
+    }
+    return b.id.compareTo(a.id);
+  });
+  return sorted;
+}
+
+List<StoredInvoice> _filterInvoicesByRecipient(
   List<StoredInvoice> invoices,
-  _InvoiceHomeFilter filter,
-  DateTime now,
+  String? recipient,
 ) {
-  return switch (filter) {
-    _InvoiceHomeFilter.currentMonth =>
-      invoices
-          .where((invoice) => _isSameMonth(invoice.issueDate, now))
-          .toList(),
-    _InvoiceHomeFilter.previousMonth => invoices.where((invoice) {
-      final previousMonth = DateTime(now.year, now.month - 1);
-      return _isSameMonth(invoice.issueDate, previousMonth);
-    }).toList(),
-    _InvoiceHomeFilter.all => invoices,
-  };
+  final selected = recipient?.trim();
+  if (selected == null || selected.isEmpty) {
+    return invoices;
+  }
+  return invoices
+      .where((invoice) => invoice.recipientName.trim() == selected)
+      .toList();
 }
 
-bool _isSameMonth(DateTime date, DateTime month) {
-  return date.year == month.year && date.month == month.month;
+int _compareText(String a, String b) {
+  return a.toLowerCase().compareTo(b.toLowerCase());
 }
 
-String _emptyFilterMessage(_InvoiceHomeFilter filter) {
-  return switch (filter) {
-    _InvoiceHomeFilter.currentMonth =>
-      'Nema računa za ovaj mjesec.\n\nPritisnite „Svi računi” za cijelu listu.',
-    _InvoiceHomeFilter.previousMonth =>
-      'Nema računa za prošli mjesec.\n\nPritisnite „Svi računi” za cijelu listu.',
-    _InvoiceHomeFilter.all => 'Nema sačuvanih računa.',
-  };
+String _emptyFilterMessage(String? recipient) {
+  final selected = recipient?.trim();
+  if (selected == null || selected.isEmpty) {
+    return 'Nema sačuvanih računa.';
+  }
+  return 'Nema računa za „$selected”.\n\nPritisnite „Svi” za cijelu listu.';
 }
 
 final class _InvoiceFilterBar extends StatelessWidget {
-  const _InvoiceFilterBar({required this.selected, required this.onSelected});
+  const _InvoiceFilterBar({
+    required this.recipients,
+    required this.selectedRecipient,
+    required this.onSelected,
+  });
 
-  final _InvoiceHomeFilter selected;
-  final ValueChanged<_InvoiceHomeFilter> onSelected;
+  final List<String> recipients;
+  final String? selectedRecipient;
+  final ValueChanged<String?> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -611,22 +647,18 @@ final class _InvoiceFilterBar extends StatelessWidget {
         child: Row(
           children: [
             _InvoiceFilterButton(
-              selected: selected == _InvoiceHomeFilter.currentMonth,
-              label: 'Ovaj mjesec',
-              onPressed: () => onSelected(_InvoiceHomeFilter.currentMonth),
+              selected: selectedRecipient == null,
+              label: 'Svi',
+              onPressed: () => onSelected(null),
             ),
-            const SizedBox(width: 8),
-            _InvoiceFilterButton(
-              selected: selected == _InvoiceHomeFilter.previousMonth,
-              label: 'Prošli mjesec',
-              onPressed: () => onSelected(_InvoiceHomeFilter.previousMonth),
-            ),
-            const SizedBox(width: 8),
-            _InvoiceFilterButton(
-              selected: selected == _InvoiceHomeFilter.all,
-              label: 'Svi računi',
-              onPressed: () => onSelected(_InvoiceHomeFilter.all),
-            ),
+            for (final recipient in recipients) ...[
+              const SizedBox(width: 8),
+              _InvoiceFilterButton(
+                selected: selectedRecipient == recipient,
+                label: recipient,
+                onPressed: () => onSelected(recipient),
+              ),
+            ],
           ],
         ),
       ),

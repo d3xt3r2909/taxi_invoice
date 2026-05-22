@@ -67,7 +67,7 @@ final class _InvoiceChatWizardScreenState
     final now = DateTime.now();
     _issueDate = DateTime(now.year, now.month, now.day);
     _currentLineDate = _issueDate;
-    _invoiceNumber.text = suggestInvoiceNumbers(now)[1];
+    _invoiceNumber.text = _suggestedInvoiceNumber();
   }
 
   @override
@@ -104,6 +104,7 @@ final class _InvoiceChatWizardScreenState
       _selectedRecipient = recipient;
       _manualRecipient = false;
       _recipientNameError = null;
+      _invoiceNumber.text = _suggestedInvoiceNumber();
       _step = _nextStepAfterEdit(_ChatStep.invoiceNumber);
     });
   }
@@ -125,6 +126,7 @@ final class _InvoiceChatWizardScreenState
     }
     setState(() {
       _recipientNameError = null;
+      _invoiceNumber.text = _suggestedInvoiceNumber();
       _step = _nextStepAfterEdit(_ChatStep.invoiceNumber);
     });
   }
@@ -140,7 +142,7 @@ final class _InvoiceChatWizardScreenState
     }
     if (!isValidInvoiceNumberFormat(invoiceNumber)) {
       setState(() {
-        _invoiceNumberError = 'Broj računa mora biti u formatu 05/26.';
+        _invoiceNumberError = 'Broj računa mora biti u formatu 102/26.';
       });
       return;
     }
@@ -323,7 +325,7 @@ final class _InvoiceChatWizardScreenState
     }
     if (!isValidInvoiceNumberFormat(invoiceNumber)) {
       setState(() {
-        _invoiceNumberError = 'Broj računa mora biti u formatu 05/26.';
+        _invoiceNumberError = 'Broj računa mora biti u formatu 102/26.';
         _step = _ChatStep.invoiceNumber;
       });
       return;
@@ -378,7 +380,11 @@ final class _InvoiceChatWizardScreenState
       _manualRecipientName.clear();
       _manualRecipientAddress.clear();
       _manualRecipientJib.clear();
-      _invoiceNumber.text = suggestInvoiceNumbers(now)[1];
+      _selectedRecipient = null;
+      _manualRecipient = false;
+      _issueDate = DateTime(now.year, now.month, now.day);
+      _currentLineDate = _issueDate;
+      _invoiceNumber.text = _suggestedInvoiceNumber();
       _route.clear();
       _orderName.clear();
       _amount.clear();
@@ -387,10 +393,6 @@ final class _InvoiceChatWizardScreenState
       _routeError = null;
       _orderNameError = null;
       _amountError = null;
-      _selectedRecipient = null;
-      _manualRecipient = false;
-      _issueDate = DateTime(now.year, now.month, now.day);
-      _currentLineDate = _issueDate;
       _lines.clear();
       _returnAfterEdit = null;
       _editingLineIndex = null;
@@ -421,6 +423,14 @@ final class _InvoiceChatWizardScreenState
           address: address,
           jib: jib,
         );
+  }
+
+  String _suggestedInvoiceNumber() {
+    return suggestInvoiceNumber(
+      store: widget.store,
+      recipientName: _recipientName,
+      date: _issueDate,
+    );
   }
 
   void _goBack() {
@@ -913,34 +923,33 @@ final class _InvoiceChatWizardScreenState
   }
 
   Widget _invoiceNumberPanel(BuildContext context) {
-    final suggestions = suggestInvoiceNumbers(_issueDate);
+    final suggestion = _suggestedInvoiceNumber();
     return _answerPanel(
       children: [
         const _SuggestionLabel(
-          text: 'Brzi izbor',
-          icon: Icons.calendar_month_outlined,
+          text: 'Prijedlog za ovog naručioca',
+          icon: Icons.receipt_long_outlined,
         ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final invoiceNumber in suggestions)
-              _ChoiceButton(
-                icon: Icons.receipt_long_outlined,
-                label: invoiceNumber,
-                onPressed: () {
-                  _invoiceNumber.text = invoiceNumber;
-                  _confirmInvoiceNumber();
-                },
-              ),
+            _ChoiceButton(
+              icon: Icons.receipt_long_outlined,
+              label: suggestion,
+              onPressed: () {
+                _invoiceNumber.text = suggestion;
+                _confirmInvoiceNumber();
+              },
+            ),
           ],
         ),
         const SizedBox(height: 12),
         _LargeTextField(
           controller: _invoiceNumber,
           label: 'Broj računa',
-          hint: 'npr. 05/26',
+          hint: 'npr. 102/26',
           errorText: _invoiceNumberError,
           keyboardType: TextInputType.text,
           inputFormatters: const [InvoiceNumberInputFormatter()],
