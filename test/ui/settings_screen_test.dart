@@ -20,12 +20,12 @@ void main() {
     expect(find.text('Nalog i sinhronizacija'), findsOneWidget);
     expect(find.text('Izgled aplikacije'), findsOneWidget);
 
-    await tester.drag(find.byType(ListView), const Offset(0, -700));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -700));
     await tester.pumpAndSettle();
 
     expect(find.text('PDF računi'), findsOneWidget);
 
-    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
     await tester.pumpAndSettle();
 
     expect(find.text('Podaci i sigurnosna kopija'), findsOneWidget);

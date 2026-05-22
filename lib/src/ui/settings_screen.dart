@@ -9,6 +9,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
+const _settingsHeaderAsset = 'assets/branding/home_header.png';
+
 /// Prikaz i izmjena tamnog/svijetlog moda, teksta i uvoza/izvoza podataka.
 final class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
@@ -31,14 +33,6 @@ final class SettingsScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Postavke',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
       body: ListenableBuilder(
         listenable: Listenable.merge([
           settings,
@@ -50,214 +44,375 @@ final class SettingsScreen extends StatelessWidget {
         builder: (context, _) {
           final showAdminTools =
               userAccess?.isAdmin == true && encryption != null;
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-            children: [
-              _SettingsSection(
-                icon: Icons.account_circle_outlined,
-                title: 'Nalog i sinhronizacija',
-                description:
-                    'Brzi pregled prijave i stanja zajedničke baze računa.',
-                children: [
-                  _SettingsInfoTile(
-                    icon: Icons.mail_outline,
-                    title: 'Prijavljen korisnik',
-                    subtitle: auth.email ?? 'Nije prijavljen',
-                  ),
-                  _SyncStatusTile(store: store),
-                  if (store.syncMessage != null)
-                    _SettingsNote(text: store.syncMessage!),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        Navigator.of(
-                          context,
-                        ).popUntil((route) => route.isFirst);
-                        await auth.signOut();
-                      },
-                      icon: const Icon(Icons.logout, size: 22),
-                      label: const Text('Odjava'),
+          return CustomScrollView(
+            slivers: [
+              const _SettingsSliverAppBar(),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                sliver: SliverList.list(
+                  children: [
+                    _SettingsSection(
+                      icon: Icons.account_circle_outlined,
+                      title: 'Nalog i sinhronizacija',
+                      description:
+                          'Brzi pregled prijave i stanja zajedničke baze računa.',
+                      children: [
+                        _SettingsInfoTile(
+                          icon: Icons.mail_outline,
+                          title: 'Prijavljen korisnik',
+                          subtitle: auth.email ?? 'Nije prijavljen',
+                        ),
+                        _SyncStatusTile(store: store),
+                        if (store.syncMessage != null)
+                          _SettingsNote(text: store.syncMessage!),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              Navigator.of(
+                                context,
+                              ).popUntil((route) => route.isFirst);
+                              await auth.signOut();
+                            },
+                            icon: const Icon(Icons.logout, size: 22),
+                            label: const Text('Odjava'),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const _SettingsDivider(),
-              _SettingsSection(
-                icon: Icons.palette_outlined,
-                title: 'Izgled aplikacije',
-                description:
-                    'Podesite temu, jednostavan prikaz i veličinu teksta.',
-                children: [
-                  _SettingsControlBlock(
-                    title: 'Tema',
-                    description:
-                        'Telefon prati postavke uređaja. Svijetlo i tamno drže '
-                        'isti prikaz stalno uključen.',
-                    child: _HorizontalSettingsControl(
-                      child: SegmentedButton<ThemeMode>(
-                        showSelectedIcon: false,
-                        segments: const <ButtonSegment<ThemeMode>>[
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.system,
-                            label: Text('Telefon'),
+                    const _SettingsDivider(),
+                    _SettingsSection(
+                      icon: Icons.palette_outlined,
+                      title: 'Izgled aplikacije',
+                      description:
+                          'Podesite temu, jednostavan prikaz i veličinu teksta.',
+                      children: [
+                        _SettingsControlBlock(
+                          title: 'Tema',
+                          description:
+                              'Telefon prati postavke uređaja. Svijetlo i tamno drže '
+                              'isti prikaz stalno uključen.',
+                          child: _HorizontalSettingsControl(
+                            child: SegmentedButton<ThemeMode>(
+                              showSelectedIcon: false,
+                              segments: const <ButtonSegment<ThemeMode>>[
+                                ButtonSegment<ThemeMode>(
+                                  value: ThemeMode.system,
+                                  label: Text('Telefon'),
+                                ),
+                                ButtonSegment<ThemeMode>(
+                                  value: ThemeMode.light,
+                                  label: Text('Svijetlo'),
+                                ),
+                                ButtonSegment<ThemeMode>(
+                                  value: ThemeMode.dark,
+                                  label: Text('Tamno'),
+                                ),
+                              ],
+                              selected: <ThemeMode>{settings.themeMode},
+                              onSelectionChanged: (next) {
+                                if (next.isNotEmpty) {
+                                  settings.setThemeMode(next.first);
+                                }
+                              },
+                            ),
                           ),
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.light,
-                            label: Text('Svijetlo'),
+                        ),
+                        const _SettingsThinDivider(),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          value: settings.simpleMode,
+                          onChanged: settings.setSimpleMode,
+                          secondary: const Icon(Icons.touch_app_outlined),
+                          title: const Text('Jednostavan prikaz'),
+                          subtitle: const Text(
+                            'Veći osnovni tekst i glavni put preko pomoćnika za račun.',
                           ),
-                          ButtonSegment<ThemeMode>(
-                            value: ThemeMode.dark,
-                            label: Text('Tamno'),
+                        ),
+                        const _SettingsThinDivider(),
+                        _SettingsControlBlock(
+                          title: 'Veličina teksta',
+                          description:
+                              'Dodatno uvećanje preko sistemske veličine fonta. '
+                              'Veće je oko +12%, a najveće oko +24%.',
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _HorizontalSettingsControl(
+                                child: SegmentedButton<int>(
+                                  showSelectedIcon: false,
+                                  segments: const <ButtonSegment<int>>[
+                                    ButtonSegment<int>(
+                                      value: 0,
+                                      label: Text('Obično'),
+                                    ),
+                                    ButtonSegment<int>(
+                                      value: 1,
+                                      label: Text('Veće'),
+                                    ),
+                                    ButtonSegment<int>(
+                                      value: 2,
+                                      label: Text('Najveće'),
+                                    ),
+                                  ],
+                                  selected: <int>{settings.textScaleStep},
+                                  onSelectionChanged: (next) {
+                                    if (next.isNotEmpty) {
+                                      settings.setTextScaleStep(next.first);
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              const _TextPreviewBox(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const _SettingsDivider(),
+                    _SettingsSection(
+                      icon: Icons.picture_as_pdf_outlined,
+                      title: 'PDF računi',
+                      description: kIsWeb
+                          ? 'Na webu se PDF dijeli ili preuzima iz pregleda računa.'
+                          : 'Odaberite gdje će aplikacija čuvati PDF datoteke.',
+                      children: [
+                        if (kIsWeb)
+                          const _SettingsNote(
+                            text:
+                                'Fiksni folder na disku nije podržan u web-pregledniku.',
+                          )
+                        else ...[
+                          Text(
+                            'Svaki put kad snimite račun, datoteka ide u ovaj folder '
+                            'kao „Naručilac - broj_računa.pdf”. Ako ista datoteka već '
+                            'postoji, aplikacija pita da li da je zamijeni.',
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              height: 1.45,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _SettingsInfoTile(
+                            icon: Icons.folder_outlined,
+                            title: 'Trenutni folder',
+                            subtitle:
+                                settings.pdfOutputDirectory ??
+                                'Još nije odabran folder.',
+                            selectableSubtitle: true,
+                          ),
+                          const SizedBox(height: 12),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            children: [
+                              FilledButton.icon(
+                                onPressed: () async {
+                                  final path = await FilePicker.platform
+                                      .getDirectoryPath(
+                                        dialogTitle:
+                                            'Odaberite folder za PDF račune',
+                                      );
+                                  if (path != null) {
+                                    await settings.setPdfOutputDirectory(path);
+                                  }
+                                },
+                                icon: const Icon(Icons.folder_open, size: 22),
+                                label: const Text('Odaberi folder'),
+                              ),
+                              if (settings.pdfOutputDirectory != null)
+                                OutlinedButton(
+                                  onPressed: () =>
+                                      settings.setPdfOutputDirectory(null),
+                                  child: const Text('Ukloni folder'),
+                                ),
+                            ],
                           ),
                         ],
-                        selected: <ThemeMode>{settings.themeMode},
-                        onSelectionChanged: (next) {
-                          if (next.isNotEmpty) {
-                            settings.setThemeMode(next.first);
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-                  const _SettingsThinDivider(),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: settings.simpleMode,
-                    onChanged: settings.setSimpleMode,
-                    secondary: const Icon(Icons.touch_app_outlined),
-                    title: const Text('Jednostavan prikaz'),
-                    subtitle: const Text(
-                      'Veći osnovni tekst i glavni put preko pomoćnika za račun.',
-                    ),
-                  ),
-                  const _SettingsThinDivider(),
-                  _SettingsControlBlock(
-                    title: 'Veličina teksta',
-                    description:
-                        'Dodatno uvećanje preko sistemske veličine fonta. '
-                        'Veće je oko +12%, a najveće oko +24%.',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _HorizontalSettingsControl(
-                          child: SegmentedButton<int>(
-                            showSelectedIcon: false,
-                            segments: const <ButtonSegment<int>>[
-                              ButtonSegment<int>(
-                                value: 0,
-                                label: Text('Obično'),
-                              ),
-                              ButtonSegment<int>(value: 1, label: Text('Veće')),
-                              ButtonSegment<int>(
-                                value: 2,
-                                label: Text('Najveće'),
-                              ),
-                            ],
-                            selected: <int>{settings.textScaleStep},
-                            onSelectionChanged: (next) {
-                              if (next.isNotEmpty) {
-                                settings.setTextScaleStep(next.first);
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        const _TextPreviewBox(),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              const _SettingsDivider(),
-              _SettingsSection(
-                icon: Icons.picture_as_pdf_outlined,
-                title: 'PDF računi',
-                description: kIsWeb
-                    ? 'Na webu se PDF dijeli ili preuzima iz pregleda računa.'
-                    : 'Odaberite gdje će aplikacija čuvati PDF datoteke.',
-                children: [
-                  if (kIsWeb)
-                    const _SettingsNote(
-                      text:
-                          'Fiksni folder na disku nije podržan u web-pregledniku.',
-                    )
-                  else ...[
-                    Text(
-                      'Svaki put kad snimite račun, datoteka ide u ovaj folder '
-                      'kao „Naručilac - broj_računa.pdf”. Ako ista datoteka već '
-                      'postoji, aplikacija pita da li da je zamijeni.',
-                      style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
-                    ),
-                    const SizedBox(height: 12),
-                    _SettingsInfoTile(
-                      icon: Icons.folder_outlined,
-                      title: 'Trenutni folder',
-                      subtitle:
-                          settings.pdfOutputDirectory ??
-                          'Još nije odabran folder.',
-                      selectableSubtitle: true,
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
+                    const _SettingsDivider(),
+                    _SettingsSection(
+                      icon: Icons.import_export,
+                      title: 'Podaci i sigurnosna kopija',
+                      description:
+                          'Izvezite JSON kopiju ili uvezite podatke s drugog uređaja.',
                       children: [
-                        FilledButton.icon(
-                          onPressed: () async {
-                            final path = await FilePicker.platform
-                                .getDirectoryPath(
-                                  dialogTitle: 'Odaberite folder za PDF račune',
-                                );
-                            if (path != null) {
-                              await settings.setPdfOutputDirectory(path);
-                            }
-                          },
-                          icon: const Icon(Icons.folder_open, size: 22),
-                          label: const Text('Odaberi folder'),
+                        Text(
+                          'Kopija sadrži račune, naručioce usluga, gradove i imena '
+                          'narudžbi. Uvoz „zamijeni sve” briše trenutne lokalne podatke.',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            height: 1.45,
+                          ),
                         ),
-                        if (settings.pdfOutputDirectory != null)
-                          OutlinedButton(
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
                             onPressed: () =>
-                                settings.setPdfOutputDirectory(null),
-                            child: const Text('Ukloni folder'),
+                                showImportExportSheet(context, store),
+                            icon: const Icon(Icons.import_export, size: 24),
+                            label: const Text('Uvoz i izvoz podataka'),
                           ),
+                        ),
                       ],
                     ),
+                    if (showAdminTools) ...[
+                      const _SettingsDivider(),
+                      _AdminDatabaseSection(
+                        store: store,
+                        encryption: encryption!,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-              const _SettingsDivider(),
-              _SettingsSection(
-                icon: Icons.import_export,
-                title: 'Podaci i sigurnosna kopija',
-                description:
-                    'Izvezite JSON kopiju ili uvezite podatke s drugog uređaja.',
-                children: [
-                  Text(
-                    'Kopija sadrži račune, naručioce usluga, gradove i imena '
-                    'narudžbi. Uvoz „zamijeni sve” briše trenutne lokalne podatke.',
-                    style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => showImportExportSheet(context, store),
-                      icon: const Icon(Icons.import_export, size: 24),
-                      label: const Text('Uvoz i izvoz podataka'),
-                    ),
-                  ),
-                ],
-              ),
-              if (showAdminTools) ...[
-                const _SettingsDivider(),
-                _AdminDatabaseSection(store: store, encryption: encryption!),
-              ],
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+final class _SettingsSliverAppBar extends StatelessWidget {
+  const _SettingsSliverAppBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final topPadding = MediaQuery.paddingOf(context).top;
+    final toolbarHeight = _settingsToolbarHeight(context);
+    final collapsedHeight = topPadding + toolbarHeight;
+    final expandedHeight =
+        collapsedHeight + (size.width * 0.2).clamp(96.0, 156.0).toDouble();
+    final scheme = Theme.of(context).colorScheme;
+    return SliverAppBar(
+      automaticallyImplyLeading: false,
+      pinned: true,
+      toolbarHeight: toolbarHeight,
+      expandedHeight: expandedHeight,
+      backgroundColor: scheme.surface,
+      surfaceTintColor: scheme.surfaceTint,
+      elevation: 0,
+      scrolledUnderElevation: 2,
+      flexibleSpace: LayoutBuilder(
+        builder: (context, constraints) {
+          final rawProgress =
+              (constraints.biggest.height - collapsedHeight) /
+              (expandedHeight - collapsedHeight);
+          final imageProgress = Curves.easeOut.transform(
+            rawProgress.clamp(0.0, 1.0),
+          );
+          final onImage = Curves.easeOutCubic.transform(
+            ((rawProgress - 0.12) / 0.88).clamp(0.0, 1.0),
+          );
+          final foregroundColor = Color.lerp(
+            scheme.onSurface,
+            Colors.white,
+            onImage,
+          )!;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              ColoredBox(color: scheme.surface),
+              Opacity(
+                opacity: imageProgress,
+                child: Semantics(
+                  image: true,
+                  label: 'Taxi Invoice',
+                  child: Image.asset(
+                    _settingsHeaderAsset,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              ),
+              Opacity(
+                opacity: imageProgress,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0x99000000),
+                        Color(0x33000000),
+                        Color(0x66000000),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: SafeArea(
+                  top: false,
+                  bottom: false,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: toolbarHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+                      child: Row(
+                        children: [
+                          if (Navigator.of(context).canPop()) ...[
+                            _SettingsBackButton(color: foregroundColor),
+                            const SizedBox(width: 8),
+                          ],
+                          Expanded(
+                            child: Text(
+                              'Postavke',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(
+                                    color: foregroundColor,
+                                    fontWeight: FontWeight.w800,
+                                    shadows: imageProgress > 0.2
+                                        ? const [
+                                            Shadow(
+                                              blurRadius: 12,
+                                              color: Color(0xAA000000),
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+double _settingsToolbarHeight(BuildContext context) {
+  return MediaQuery.textScalerOf(context).scale(64).clamp(64.0, 88.0);
+}
+
+final class _SettingsBackButton extends StatelessWidget {
+  const _SettingsBackButton({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+      onPressed: () => Navigator.of(context).maybePop(),
+      icon: const Icon(Icons.arrow_back),
+      style: IconButton.styleFrom(
+        foregroundColor: color,
+        backgroundColor: Colors.black.withValues(alpha: 0.24),
       ),
     );
   }
