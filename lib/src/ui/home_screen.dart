@@ -114,6 +114,40 @@ final class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _openAssistant() async {
+    final invoiceCount = widget.store.invoicesSortedByIssueDate.length;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => InvoiceChatWizardScreen(
+          store: widget.store,
+          settings: widget.settings,
+        ),
+      ),
+    );
+    if (mounted &&
+        widget.store.invoicesSortedByIssueDate.length > invoiceCount) {
+      setState(() => _filter = _InvoiceHomeFilter.all);
+    }
+  }
+
+  Future<void> _openManualInvoice() async {
+    final store = widget.store;
+    if (!store.canWrite) {
+      showInvoiceStoreReadOnlyMessage(context, store);
+      return;
+    }
+    final invoiceCount = store.invoicesSortedByIssueDate.length;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            InvoiceEditorScreen(store: store, settings: widget.settings),
+      ),
+    );
+    if (mounted && store.invoicesSortedByIssueDate.length > invoiceCount) {
+      setState(() => _filter = _InvoiceHomeFilter.all);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final store = widget.store;
@@ -128,6 +162,7 @@ final class _HomeScreenState extends State<HomeScreen> {
       body: CustomScrollView(
         slivers: [
           _HomeSliverAppBar(
+            onOpenManualInvoice: _openManualInvoice,
             onOpenRecipients: _openServiceRecipients,
             onOpenSettings: _openSettings,
           ),
@@ -155,7 +190,7 @@ final class _HomeScreenState extends State<HomeScreen> {
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
               sliver: SliverList.builder(
                 itemCount: list.length,
                 itemBuilder: (context, index) {
@@ -183,12 +218,12 @@ final class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
-      bottomNavigationBar: _InvoiceCreateActions(
-        store: store,
-        settings: widget.settings,
-        onInvoiceCreated: () =>
-            setState(() => _filter = _InvoiceHomeFilter.all),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openAssistant,
+        icon: const Icon(Icons.chat_bubble_outline_rounded),
+        label: const Text('Pomoćnik za račun'),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }
@@ -197,10 +232,12 @@ enum _InvoiceHomeFilter { currentMonth, previousMonth, all }
 
 final class _HomeSliverAppBar extends StatelessWidget {
   const _HomeSliverAppBar({
+    required this.onOpenManualInvoice,
     required this.onOpenRecipients,
     required this.onOpenSettings,
   });
 
+  final VoidCallback onOpenManualInvoice;
   final VoidCallback onOpenRecipients;
   final VoidCallback onOpenSettings;
 
@@ -308,6 +345,14 @@ final class _HomeSliverAppBar extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 12),
+                          _HomeHeaderAction(
+                            tooltip: 'Napredno: novi račun ručno',
+                            icon: Icons.edit_document,
+                            foregroundColor: foregroundColor,
+                            backgroundColor: buttonBackground,
+                            onPressed: onOpenManualInvoice,
+                          ),
+                          const SizedBox(width: 4),
                           _HomeHeaderAction(
                             tooltip: 'Naručioci usluga',
                             icon: Icons.groups_outlined,
@@ -680,102 +725,6 @@ final class _InvoiceListActions extends StatelessWidget {
         const SizedBox(width: 4),
         Icon(Icons.chevron_right, size: 30, color: scheme.invoiceAccent),
       ],
-    );
-  }
-}
-
-final class _InvoiceCreateActions extends StatelessWidget {
-  const _InvoiceCreateActions({
-    required this.store,
-    required this.settings,
-    required this.onInvoiceCreated,
-  });
-
-  final InvoiceStoreController store;
-  final AppSettingsController settings;
-  final VoidCallback onInvoiceCreated;
-
-  Future<void> _openAssistant(BuildContext context) async {
-    final invoiceCount = store.invoicesSortedByIssueDate.length;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            InvoiceChatWizardScreen(store: store, settings: settings),
-      ),
-    );
-    if (context.mounted &&
-        store.invoicesSortedByIssueDate.length > invoiceCount) {
-      onInvoiceCreated();
-    }
-  }
-
-  Future<void> _openEditor(BuildContext context) async {
-    if (!store.canWrite) {
-      showInvoiceStoreReadOnlyMessage(context, store);
-      return;
-    }
-    final invoiceCount = store.invoicesSortedByIssueDate.length;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => InvoiceEditorScreen(store: store, settings: settings),
-      ),
-    );
-    if (context.mounted &&
-        store.invoicesSortedByIssueDate.length > invoiceCount) {
-      onInvoiceCreated();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final border = BorderSide(color: Theme.of(context).colorScheme.outline);
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      child: SafeArea(
-        top: false,
-        child: DecoratedBox(
-          decoration: BoxDecoration(border: Border(top: border)),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final assistant = FilledButton.icon(
-                  onPressed: () => _openAssistant(context),
-                  icon: const Icon(Icons.chat_bubble_outline_rounded),
-                  label: const Text('Pomoćnik za račun'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                  ),
-                );
-                final editor = OutlinedButton.icon(
-                  onPressed: () => _openEditor(context),
-                  icon: const Icon(Icons.add),
-                  label: Text(
-                    settings.simpleMode ? 'Novi račun ručno' : 'Novi račun',
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                  ),
-                );
-                if (settings.simpleMode || constraints.maxWidth < 420) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [assistant, const SizedBox(height: 10), editor],
-                  );
-                }
-                return Row(
-                  children: [
-                    Expanded(child: assistant),
-                    const SizedBox(width: 12),
-                    Expanded(child: editor),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

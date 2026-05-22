@@ -125,6 +125,30 @@ void main() {
     expect(find.text('Nije online'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Online'), findsOneWidget);
   });
+
+  testWidgets(
+    'uses assistant as floating action and manual invoice as header action',
+    (tester) async {
+      await initializeDateFormatting('bs_BA');
+      final store = await _loadedStore(invoices: []);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            store: store,
+            settings: AppSettingsController(),
+            auth: AppAuthController.notConfigured(),
+          ),
+        ),
+      );
+
+      expect(
+        find.widgetWithText(FloatingActionButton, 'Pomoćnik za račun'),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Napredno: novi račun ručno'), findsOneWidget);
+    },
+  );
 }
 
 Future<InvoiceStoreController> _loadedStore({
